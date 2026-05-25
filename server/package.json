@@ -1,0 +1,49 @@
+{
+  "name": "gt-expense-management-server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "seed": "node src/seeders/seed.js",
+    "test": "node --test tests/security/*.test.js tests/workflow/*.test.js",
+    "test:qa": "node --test tests/security/*.test.js tests/workflow/*.test.js",
+    "test:jest": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
+    "test:api": "node --test tests/api/**/*.test.js",
+    "test:workflow": "node --test tests/workflow/**/*.test.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.12.11",
+    "compression": "^1.7.4",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "csv-stringify": "^6.5.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "gt-expense-management": "file:..",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.4.1",
+    "joi": "^17.13.3",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.5.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.2",
+    "nodemailer": "^8.0.7",
+    "pdfkit": "^0.15.0",
+    "socket.io": "^4.7.5",
+    "uuid": "^11.1.0",
+    "winston": "^3.13.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "mongodb-memory-server": "^11.1.0",
+    "nodemon": "^3.1.4",
+    "supertest": "^7.2.2"
+  }
+}

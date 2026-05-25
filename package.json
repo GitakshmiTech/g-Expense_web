@@ -1,0 +1,14 @@
+{
+  "name": "gt-expense-management",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise multi-tenant expense management system inspired by Zoho Expense.",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "seed": "npm run seed --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
