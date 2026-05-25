@@ -11,10 +11,13 @@
   color-scheme: dark;
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
   background: #f4f6f9;
   color: #111827;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 .dark body {

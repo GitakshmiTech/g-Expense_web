@@ -5,16 +5,18 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { StatCard } from '../../components/common/StatCard';
 import { DataTable } from '../../components/tables/DataTable';
 import { api } from '../../services/platform.service';
+import { usePermission } from '../../hooks/usePermissions';
 
 export const Budgets = () => {
   const queryClient = useQueryClient();
+  const canCreate = usePermission('budgets', 'create');
   const { data = [] } = useQuery({ queryKey: ['budgets'], queryFn: api.budgets });
   const create = useMutation({ mutationFn: api.createBudget, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['budgets'] }) });
   const total = data.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const consumed = data.reduce((sum, item) => sum + Number(item.consumed || 0), 0);
   return (
     <>
-      <PageHeader title="Budget Dashboard" description="Department and project budgets with threshold alerts." actions={<button className="btn-primary" onClick={() => create.mutate({ name: 'Sales Project Budget', type: 'project', projectCode: 'SALES-Q2', amount: 250000, consumed: 0 })}><Plus className="h-4 w-4" /> Add Budget</button>} />
+      <PageHeader title="Budget Dashboard" description="Department and project budgets with threshold alerts." actions={canCreate && <button className="btn-primary" onClick={() => create.mutate({ name: 'Sales Project Budget', type: 'project', projectCode: 'SALES-Q2', amount: 250000, consumed: 0 })}><Plus className="h-4 w-4" /> Add Budget</button>} />
       <div className="mb-5 grid gap-4 md:grid-cols-3">
         <StatCard label="Allocated" value={`₹${Math.round(total).toLocaleString()}`} icon={WalletCards} />
         <StatCard label="Consumed" value={`₹${Math.round(consumed).toLocaleString()}`} icon={WalletCards} tone="amber" />

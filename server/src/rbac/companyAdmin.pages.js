@@ -44,38 +44,42 @@ export const MODULE_PAGE_MAP = {
   employees: 'employees'
 };
 
+const EMPLOYEE_DEFAULT_GRANTS = [
+  { page: 'dashboard', action: 'view' },
+  { page: 'expense_reports', action: 'view' },
+  { page: 'trips', action: 'view' },
+  { page: 'trips', action: 'create' },
+  { page: 'trips', action: 'edit' },
+  { page: 'trips', action: 'delete' },
+  { page: 'reimbursements', action: 'view' },
+  { page: 'notifications', action: 'view' },
+  { page: 'settings', action: 'view' },
+  { page: 'settings', action: 'edit' }
+];
+
 export const DEFAULT_ROLE_GRANTS = {
   company_admin: COMPANY_ADMIN_PAGES.flatMap((page) => page.actions.map((action) => ({ page: page.key, action }))),
   manager: [
-    { page: 'dashboard', action: 'view' },
-    { page: 'expense_reports', action: 'view' },
+    ...EMPLOYEE_DEFAULT_GRANTS,
     { page: 'expense_reports', action: 'approve' },
-    { page: 'trips', action: 'view' },
     { page: 'trips', action: 'approve' },
     { page: 'budgets', action: 'view' },
     { page: 'violation_center', action: 'view' },
-    { page: 'analytics', action: 'view' },
-    { page: 'notifications', action: 'view' },
-    { page: 'settings', action: 'view' }
+    { page: 'analytics', action: 'view' }
   ],
   finance: [
-    { page: 'dashboard', action: 'view' },
-    { page: 'expense_reports', action: 'view' },
+    ...EMPLOYEE_DEFAULT_GRANTS,
     { page: 'expense_reports', action: 'approve' },
     { page: 'expense_reports', action: 'export' },
-    { page: 'reimbursements', action: 'view' },
     { page: 'reimbursements', action: 'approve' },
     { page: 'budgets', action: 'view' },
     { page: 'audit_logs', action: 'view' },
-    { page: 'analytics', action: 'view' },
-    { page: 'notifications', action: 'view' }
+    { page: 'analytics', action: 'view' }
   ],
   cfo: [
-    { page: 'dashboard', action: 'view' },
-    { page: 'expense_reports', action: 'view' },
+    ...EMPLOYEE_DEFAULT_GRANTS,
     { page: 'expense_reports', action: 'approve' },
     { page: 'expense_reports', action: 'export' },
-    { page: 'reimbursements', action: 'view' },
     { page: 'reimbursements', action: 'approve' },
     { page: 'budgets', action: 'view' },
     { page: 'budgets', action: 'approve' },
@@ -83,5 +87,5 @@ export const DEFAULT_ROLE_GRANTS = {
     { page: 'analytics', action: 'export' },
     { page: 'audit_logs', action: 'view' }
   ],
-  employee: [{ page: 'dashboard', action: 'view' }]
+  employee: EMPLOYEE_DEFAULT_GRANTS
 };

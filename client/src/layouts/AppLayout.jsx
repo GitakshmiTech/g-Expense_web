@@ -81,7 +81,7 @@ export const AppLayout = () => {
           ))}
         </nav>
       </aside>
-      <div className={`${sidebarOpen ? 'pl-64' : 'pl-20'} transition-all duration-300 min-h-screen flex flex-col max-w-full overflow-x-clip`}>
+      <div className={`${sidebarOpen ? 'pl-64' : 'pl-20'} transition-all duration-300 min-h-screen flex flex-col max-w-full`}>
         <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-200 bg-white/90 px-6 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
           <div className="relative hidden w-full max-w-lg md:block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
