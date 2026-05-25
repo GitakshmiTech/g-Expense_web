@@ -5,10 +5,12 @@ import { DataTable } from '../../components/tables/DataTable';
 import { api } from '../../services/platform.service';
 import { PolicyBuilderDrawer } from './PolicyBuilderDrawer';
 import { Plus } from 'lucide-react';
+import { usePermission } from '../../hooks/usePermissions';
 
 export const Policy = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const queryClient = useQueryClient();
+  const canCreate = usePermission('policies', 'create');
   
   const { data = { items: [] } } = useQuery({ 
     queryKey: ['enterprise_policies'], 
@@ -34,9 +36,11 @@ export const Policy = () => {
         title="Enterprise Policy Engine" 
         description="Dynamic rule engine for expense limits, travel, approvals, and compliance." 
         actions={
-          <button className="btn-primary flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700" onClick={() => setIsDrawerOpen(true)}>
-            <Plus className="w-4 h-4" /> Create Policy
-          </button>
+          canCreate && (
+            <button className="btn-primary flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700" onClick={() => setIsDrawerOpen(true)}>
+              <Plus className="w-4 h-4" /> Create Policy
+            </button>
+          )
         } 
       />
       

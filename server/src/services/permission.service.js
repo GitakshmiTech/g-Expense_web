@@ -98,12 +98,14 @@ export const ensureSystemRole = async (companyId, roleCode, actorId) => {
         code: roleCode,
         name: roleCode.split('_').map((word) => word[0].toUpperCase() + word.slice(1)).join(' '),
         description: `System ${roleCode} baseline permissions.`,
-        permissions: grants,
         isSystem: true,
         isActive: true,
         createdBy: actorId
       },
-      $set: { updatedBy: actorId }
+      $set: {
+        permissions: grants,
+        updatedBy: actorId
+      }
     },
     { new: true, upsert: true }
   );
@@ -146,6 +148,11 @@ export const getEffectiveAccess = async (user, { fresh = false } = {}) => {
   const roles = await collectInheritedRoles([baseRole?._id, ...(employeeAccess?.roleIds || [])], user.companyId);
 
   const merged = new Map();
+  // 1. Merge default baseline system role permissions first
+  const defaultGrants = DEFAULT_ROLE_GRANTS[user.role] || [];
+  for (const [key, allowed] of grantsToMap(defaultGrants)) merged.set(key, allowed);
+
+  // 2. Merge database role permissions (which overrides defaults if explicit, or inherits)
   roles.forEach((role) => {
     for (const [key, allowed] of grantsToMap(role.permissions)) merged.set(key, allowed);
   });

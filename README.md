@@ -1,2 +1,0 @@
-# GT Expense Management
-
