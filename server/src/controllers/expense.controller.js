@@ -67,7 +67,9 @@ export const migrateSubmitted = asyncHandler(async (req, res) => {
 });
 
 export const createExpense = asyncHandler(async (req, res) => {
-  const { receiptFile, sharedExpense, ...expenseData } = req.body;
+  const { receiptFile, receiptFiles = [], sharedExpense, ...expenseData } = req.body;
+  const normalizedReceiptFiles = receiptFiles.length ? receiptFiles : receiptFile ? [receiptFile] : [];
+  if (sharedExpense?.enabled && normalizedReceiptFiles.length > 1) throw new ApiError(400, 'Shared expenses support only one receipt');
   const requestedStatus = normalizeExpenseStatus(expenseData.status || 'DRAFT');
   const expense = await Expense.create({
     ...expenseData,
@@ -80,34 +82,34 @@ export const createExpense = asyncHandler(async (req, res) => {
   });
 
   let receiptCount = 0;
-  if (receiptFile) {
+  for (const item of normalizedReceiptFiles) {
     const duplicateReceipt = await Receipt.findOne({
       companyId: req.companyId,
       $or: [
-        { fileHash: receiptFile.fileHash },
-        { originalName: receiptFile.originalName, size: receiptFile.size }
+        { fileHash: item.fileHash },
+        { originalName: item.originalName, size: item.size }
       ]
     });
 
     const receipt = await Receipt.create({
       companyId: req.companyId,
       expenseId: expense._id,
-      fileName: receiptFile.fileName,
-      originalName: receiptFile.originalName,
-      mimeType: receiptFile.mimeType,
-      path: receiptFile.path,
-      size: receiptFile.size,
-      ocr: receiptFile.ocr,
-      fileHash: receiptFile.fileHash
+      fileName: item.fileName,
+      originalName: item.originalName,
+      mimeType: item.mimeType,
+      path: item.path,
+      size: item.size,
+      ocr: item.ocr,
+      fileHash: item.fileHash
     });
 
     expense.receipts.push(receipt._id);
     expense.attachments.push({
-      fileName: receiptFile.fileName,
-      originalName: receiptFile.originalName,
-      mimeType: receiptFile.mimeType,
-      path: receiptFile.path,
-      size: receiptFile.size
+      fileName: item.fileName,
+      originalName: item.originalName,
+      mimeType: item.mimeType,
+      path: item.path,
+      size: item.size
     });
 
     await OcrLog.create({
@@ -115,7 +117,7 @@ export const createExpense = asyncHandler(async (req, res) => {
       receiptId: receipt._id,
       expenseId: expense._id,
       status: 'completed',
-      extracted: receiptFile.ocr,
+      extracted: item.ocr,
       duplicateScore: duplicateReceipt ? 90 : 0,
       fraudScore: duplicateReceipt ? 70 : 0
     });
@@ -127,14 +129,13 @@ export const createExpense = asyncHandler(async (req, res) => {
         score: 90
       });
     }
-    receiptCount = 1;
+    receiptCount += 1;
   }
 
   expense.policyViolations = await evaluateExpensePolicy({ companyId: req.companyId, user: req.user, expense, receiptCount });
   expense.fraudFlags = expense.fraudFlags.concat(await detectFraud({ companyId: req.companyId, expense }));
 
   if (sharedExpense?.enabled) {
-    if (expense.receipts.length > 1) throw new ApiError(400, 'Shared expenses support only one receipt');
     await upsertSharedExpenseRecords({
       companyId: req.companyId,
       expense,

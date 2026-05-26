@@ -34,5 +34,14 @@ export const expenseSchema = Joi.object({
     size: Joi.number().required(),
     fileHash: Joi.string().allow('', null),
     ocr: Joi.object().unknown(true).optional()
-  }).optional()
+  }).optional(),
+  receiptFiles: Joi.array().items(Joi.object({
+    fileName: Joi.string().required(),
+    originalName: Joi.string().required(),
+    mimeType: Joi.string().required(),
+    path: Joi.string().required(),
+    size: Joi.number().required(),
+    fileHash: Joi.string().allow('', null),
+    ocr: Joi.object().unknown(true).optional()
+  })).optional()
 });

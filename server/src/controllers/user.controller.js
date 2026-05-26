@@ -8,6 +8,13 @@ export const listUsers = asyncHandler(async (req, res) => {
   res.json(users);
 });
 
+export const listUserDirectory = asyncHandler(async (req, res) => {
+  const users = await User.find({ ...tenantFilter(req), status: 'active' })
+    .select('_id name email department role status')
+    .sort({ name: 1 });
+  res.json(users);
+});
+
 export const createUser = asyncHandler(async (req, res) => {
   const user = await User.create({ ...req.body, companyId: req.companyId || req.body.companyId });
   await writeAudit({ req, action: 'user.create', entity: 'User', entityId: user._id.toString(), after: user.toObject() });
