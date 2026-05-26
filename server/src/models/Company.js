@@ -10,6 +10,17 @@ const companySchema = new mongoose.Schema(
     baseCurrency: { type: String, default: 'INR' },
     country: { type: String, default: 'IN' },
     status: { type: String, enum: ['trial', 'active', 'suspended', 'cancelled'], default: 'trial' },
+    logo: String,
+    phone: String,
+    companyType: String,
+    gstNumber: String,
+    panNumber: String,
+    registrationNo: String,
+    state: String,
+    officeAddress: String,
+    adminEmail: String,
+    adminName: String,
+    adminPassword: { type: String, default: 'Admin@12345' },
     subscription: {
       plan: { type: String, default: 'Enterprise' },
       seats: { type: Number, default: 100 },
@@ -37,7 +48,10 @@ companySchema.pre('save', async function (next) {
     this.slug = this.name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
   }
   if (!this.companyCode) {
-    this.companyCode = 'COMP-' + Math.random().toString(36).substring(2, 8).toUpperCase() + '-' + Date.now().toString().slice(-4);
+    const count = await mongoose.model('Company').countDocuments();
+    const prefix = this.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
+    const suffix = String(count + 1).padStart(3, '0');
+    this.companyCode = `${prefix}${suffix}`;
   }
   next();
 });

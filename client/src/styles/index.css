@@ -16,8 +16,9 @@ html, body {
   padding: 0;
   background: #f4f6f9;
   color: #111827;
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
+  /* zoom: 0.9.5; */
 }
 
 .dark body {

@@ -64,18 +64,27 @@ export const AppLayout = () => {
           {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
 
-        <nav className="mt-4 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3">
+        <nav className="mt-4 flex-1 space-y-0 overflow-y-auto overflow-x-hidden">
           {items.map(({ label, path, icon: Icon }) => (
-            <NavLink key={path} to={path} className={({ isActive }) => `group relative flex items-center transition-colors ${
-              sidebarOpen 
-                ? `flex-row gap-3 rounded-2xl px-4 py-3 ${isActive ? 'bg-brand-50 text-brand-700 shadow-sm dark:bg-slate-900 dark:text-brand-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white'}`
-                : `flex-col justify-center gap-1.5 rounded-2xl py-3 ${isActive ? 'bg-brand-50 text-brand-700 dark:bg-slate-900 dark:text-brand-100' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-900'}`
-            }`}>
-              <Icon className="h-5 w-5 shrink-0" />
-              {sidebarOpen ? (
-                <span className="text-sm font-medium whitespace-nowrap">{label}</span>
-              ) : (
-                <span className="text-[10px] font-medium tracking-wide text-center px-1 w-full truncate">{label}</span>
+            <NavLink
+              key={path}
+              to={path}
+              className={({ isActive }) => `group relative flex items-center transition-colors ${
+                sidebarOpen 
+                  ? `flex-row gap-4 py-4 pl-7 pr-4 ${isActive ? 'bg-brand-50/60 text-brand-700 dark:bg-slate-900/50 dark:text-brand-300' : 'text-slate-600 hover:bg-slate-50/80 dark:text-slate-400 dark:hover:bg-slate-900/50 dark:hover:text-slate-200'}`
+                  : `flex-col justify-center gap-1 py-4 px-2 ${isActive ? 'bg-brand-50/60 text-brand-700 dark:bg-slate-900/50 dark:text-brand-300' : 'text-slate-500 hover:bg-slate-50/80 dark:text-slate-400 dark:hover:bg-slate-900/50 dark:hover:text-slate-200'}`
+              }`}
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && <div className="absolute left-0 top-0 bottom-0 w-[5px] bg-brand-600 rounded-r-full" />}
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {sidebarOpen ? (
+                    <span className="text-[11px] font-bold tracking-wider uppercase whitespace-nowrap">{label}</span>
+                  ) : (
+                    <span className="text-[9px] font-bold tracking-wider uppercase text-center px-1 w-full truncate">{label}</span>
+                  )}
+                </>
               )}
             </NavLink>
           ))}

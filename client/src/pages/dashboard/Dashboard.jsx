@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Clock3, CreditCard, IndianRupee, Users, WalletCards, Plane, Settings, Check, FileText } from 'lucide-react';
+import { AlertTriangle, Clock3, CreditCard, IndianRupee, Users, WalletCards, Plane, Settings, Check, FileText, Building, Building2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import { AnalyticsCard } from '../../components/common/AnalyticsCard';
@@ -23,6 +23,7 @@ export const Dashboard = () => {
   const { data: expenses = [] } = useQuery({ queryKey: ['expenses'], queryFn: () => api.expenses({}) });
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: api.users, enabled: userMode !== 'employee' });
   const { data: budgets = [] } = useQuery({ queryKey: ['budgets'], queryFn: api.budgets, enabled: userMode !== 'employee' });
+  const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: api.companies, enabled: userMode === 'super_admin' });
   
   const action = useMutation({ mutationFn: ({ id, payload }) => api.actExpense(id, payload), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['expenses'] }) });
   
@@ -153,33 +154,46 @@ export const Dashboard = () => {
 
   return (
     <>
-      <PageHeader title="Expense Command Center" description="Spend controls, approval health, fraud signals, and finance workload in one operating view." />
-      <FilterBar statuses={['SUBMITTED', 'PENDING_MANAGER', 'PENDING_FINANCE', 'UNDER_VERIFICATION', 'PAYMENT_PROCESSING', 'REIMBURSED', 'REJECTED']} rightSlot={<span className="chip">Live workspace</span>} />
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Total Spend" value={`₹${Math.round(analytics?.totals?.totalSpend || 0).toLocaleString()}`} icon={IndianRupee} />
-        <StatCard label="Expenses" value={analytics?.totals?.count || 0} icon={CreditCard} tone="green" />
-        <StatCard label="Pending Approvals" value={expenses.filter((item) => !['UNDER_VERIFICATION', 'REIMBURSED', 'CLOSED', 'REJECTED', 'DRAFT', 'approved', 'rejected', 'draft'].includes(item.status)).length} icon={Clock3} tone="amber" />
-        <StatCard label="Active Employees" value={users.filter((item) => item.status === 'active').length} icon={Users} />
-        <StatCard label="Shared Expenses" value={expenses.filter((item) => item.isSharedExpense).length} icon={WalletCards} tone="green" />
-      </motion.div>
-      <section className="mt-5 grid gap-4 lg:grid-cols-3">
-        <AnalyticsCard title="Budget Consumption" value={`${Math.round((consumedBudget / (totalBudget || 1)) * 100)}%`} caption={`${Math.round(consumedBudget).toLocaleString()} consumed of ${Math.round(totalBudget).toLocaleString()}`}>
-          <div className="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-brand-600" style={{ width: `${Math.min((consumedBudget / (totalBudget || 1)) * 100, 100)}%` }} /></div>
-        </AnalyticsCard>
-        <AnalyticsCard title="Reimbursement Summary" value="Ready" caption="Finance queue, paid reimbursements, and settlement workload.">
-          <div className="grid grid-cols-3 gap-2 text-center text-sm"><span className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">Ready<br /><b>{expenses.filter((item) => ['UNDER_VERIFICATION', 'PAYMENT_PROCESSING', 'approved'].includes(item.status)).length}</b></span><span className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">Paid<br /><b>{expenses.filter((item) => ['REIMBURSED', 'paid'].includes(item.status)).length}</b></span><span className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">Flags<br /><b>{flags}</b></span></div>
-        </AnalyticsCard>
-        <AnalyticsCard title="Policy Health" value={flags ? 'Review' : 'Clean'} caption="Soft warnings, hard blocks, duplicates, and escalation signals.">
-          <div className="flex items-center gap-3"><WalletCards className="h-10 w-10 text-brand-600" /><p className="text-sm text-slate-500">Controls are active across policy, OCR, fraud, budget, and approval rules.</p></div>
-        </AnalyticsCard>
-      </section>
+      {userMode === 'super_admin' ? (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Total Companies" value={companies.length} icon={Building2} />
+          <StatCard label="Active Companies" value={companies.filter(c => c.status === 'active').length} icon={Building} tone="green" />
+          <StatCard label="Inactive Companies" value={companies.filter(c => c.status !== 'active').length} icon={Building2} tone="rose" />
+          <StatCard label="Global Active Users" value={users.filter(u => u.status === 'active').length} icon={Users} />
+        </motion.div>
+      ) : (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <StatCard label="Total Spend" value={`₹${Math.round(analytics?.totals?.totalSpend || 0).toLocaleString()}`} icon={IndianRupee} />
+          <StatCard label="Expenses" value={analytics?.totals?.count || 0} icon={CreditCard} tone="green" />
+          <StatCard label="Pending Approvals" value={expenses.filter((item) => !['UNDER_VERIFICATION', 'REIMBURSED', 'CLOSED', 'REJECTED', 'DRAFT', 'approved', 'rejected', 'draft'].includes(item.status)).length} icon={Clock3} tone="amber" />
+          <StatCard label="Active Employees" value={users.filter((item) => item.status === 'active').length} icon={Users} />
+          <StatCard label="Shared Expenses" value={expenses.filter((item) => item.isSharedExpense).length} icon={WalletCards} tone="green" />
+        </motion.div>
+      )}
+      {userMode !== 'super_admin' && (
+        <section className="mt-5 grid gap-4 lg:grid-cols-3">
+          <AnalyticsCard title="Budget Consumption" value={`${Math.round((consumedBudget / (totalBudget || 1)) * 100)}%`} caption={`${Math.round(consumedBudget).toLocaleString()} consumed of ${Math.round(totalBudget).toLocaleString()}`}>
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-brand-600" style={{ width: `${Math.min((consumedBudget / (totalBudget || 1)) * 100, 100)}%` }} /></div>
+          </AnalyticsCard>
+          <AnalyticsCard title="Reimbursement Summary" value="Ready" caption="Finance queue, paid reimbursements, and settlement workload.">
+            <div className="grid grid-cols-3 gap-2 text-center text-sm"><span className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">Ready<br /><b>{expenses.filter((item) => ['UNDER_VERIFICATION', 'PAYMENT_PROCESSING', 'approved'].includes(item.status)).length}</b></span><span className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">Paid<br /><b>{expenses.filter((item) => ['REIMBURSED', 'paid'].includes(item.status)).length}</b></span><span className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">Flags<br /><b>{flags}</b></span></div>
+          </AnalyticsCard>
+          <AnalyticsCard title="Policy Health" value={flags ? 'Review' : 'Clean'} caption="Soft warnings, hard blocks, duplicates, and escalation signals.">
+            <div className="flex items-center gap-3"><WalletCards className="h-10 w-10 text-brand-600" /><p className="text-sm text-slate-500">Controls are active across policy, OCR, fraud, budget, and approval rules.</p></div>
+          </AnalyticsCard>
+        </section>
+      )}
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_420px]">
         <div className="grid gap-5">
           <AnalyticsCard title="Expense Trends" caption="Department and period trend view."><TrendLineChart data={analytics?.byDepartment || []} /></AnalyticsCard>
-          <AnalyticsCard title="Department Analysis" caption="Budget owners and team-level spend."><CategoryBarChart data={analytics?.byDepartment || []} /></AnalyticsCard>
+          {userMode !== 'super_admin' && (
+            <AnalyticsCard title="Department Analysis" caption="Budget owners and team-level spend."><CategoryBarChart data={analytics?.byDepartment || []} /></AnalyticsCard>
+          )}
         </div>
         <div className="grid gap-5">
-          <ApprovalQueue expenses={expenses} onAction={(id, payload) => action.mutate({ id, payload })} />
+          {userMode !== 'super_admin' && (
+            <ApprovalQueue expenses={expenses} onAction={(id, payload) => action.mutate({ id, payload })} />
+          )}
           <AnalyticsCard title="Status Mix" caption="Lifecycle distribution."><StatusPieChart data={analytics?.byStatus || []} /></AnalyticsCard>
         </div>
       </div>

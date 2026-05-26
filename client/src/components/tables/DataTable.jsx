@@ -2,8 +2,11 @@ import { flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel
 import { Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-export const DataTable = ({ data = [], columns = [], searchPlaceholder = 'Search records', pageSize = 10, onRowClick }) => {
-  const [globalFilter, setGlobalFilter] = useState('');
+export const DataTable = ({ data = [], columns = [], searchPlaceholder = 'Search records', pageSize = 10, onRowClick, showSearch = true, searchValue, onSearchChange }) => {
+  const [internalGlobalFilter, setInternalGlobalFilter] = useState('');
+  const globalFilter = searchValue !== undefined ? searchValue : internalGlobalFilter;
+  const setGlobalFilter = onSearchChange !== undefined ? onSearchChange : setInternalGlobalFilter;
+
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize,
@@ -27,10 +30,12 @@ export const DataTable = ({ data = [], columns = [], searchPlaceholder = 'Search
 
   return (
     <div className="panel overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-slate-200 p-4 dark:border-slate-800">
-        <Search className="h-4 w-4 text-slate-400" />
-        <input className="w-full bg-transparent text-sm outline-none dark:text-white" value={globalFilter} onChange={(event) => setGlobalFilter(event.target.value)} placeholder={searchPlaceholder} />
-      </div>
+      {showSearch && (
+        <div className="flex items-center gap-2 border-b border-slate-200 p-4 dark:border-slate-800">
+          <Search className="h-4 w-4 text-slate-400" />
+          <input className="w-full bg-transparent text-sm outline-none dark:text-white" value={globalFilter} onChange={(event) => setGlobalFilter(event.target.value)} placeholder={searchPlaceholder} />
+        </div>
+      )}
       <div className="overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
           <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-950">
