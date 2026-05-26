@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Eye, Plus, Send, Trash2 } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApprovalTimeline } from '../../components/common/ApprovalTimeline';
 import { Drawer } from '../../components/common/Drawer';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -20,6 +20,7 @@ const TERMINAL_STATUSES = ['REIMBURSED', 'CLOSED', 'REJECTED', 'approved', 'reje
 
 export const Expenses = () => {
   const [showForm, setShowForm] = useState(false);
+  const [formKey, setFormKey] = useState(0);
   const [selectedExpense, setSelectedExpense] = useState(null);
   const [approvalExpense, setApprovalExpense] = useState(null);
   const [noteText, setNoteText] = useState('');
@@ -27,6 +28,7 @@ export const Expenses = () => {
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -45,14 +47,23 @@ export const Expenses = () => {
   });
   
   const create = useMutation({
-    mutationFn: (payload) => payload.sharedExpense?.enabled ? api.createSharedExpense({
+    mutationFn: ({ payload, options = {} }) => payload.sharedExpense?.enabled ? api.createSharedExpense({
       ...payload,
       participantIds: payload.sharedExpense.participantIds,
       splitType: payload.sharedExpense.splitType,
       splitValues: payload.sharedExpense.splitValues,
       reimbursementMode: payload.sharedExpense.reimbursementMode
-    }) : api.createExpense(payload),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); setShowForm(false); }
+    }).then((expense) => ({ expense, options })) : api.createExpense(payload).then((expense) => ({ expense, options })),
+    onSuccess: ({ expense, options }) => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      if (options.createAnother) {
+        setFormKey((current) => current + 1);
+        setShowForm(true);
+        return;
+      }
+      setShowForm(false);
+      if (expense?._id) navigate(`/expenses/${expense._id}`);
+    }
   });
   
   const submit = useMutation({
@@ -184,8 +195,9 @@ export const Expenses = () => {
         open={showForm}
         title="Create New Expense"
         onClose={() => setShowForm(false)}
+        className="max-w-5xl"
       >
-        <ExpenseForm onSubmit={(values) => create.mutate(values)} isLoading={create.isPending} />
+        <ExpenseForm key={formKey} onSubmit={(payload, options) => create.mutate({ payload, options })} isLoading={create.isPending} onCancel={() => setShowForm(false)} />
       </Drawer>
 
       {filtered.length
