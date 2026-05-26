@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 
-export const Drawer = ({ open, title, description, onClose, children, footer }) => (
+export const Drawer = ({ open, title, description, onClose, children, footer, className = 'max-w-2xl' }) => (
   <AnimatePresence>
     {open && (
       <div className="fixed inset-0 z-50 flex justify-end">
@@ -14,11 +14,11 @@ export const Drawer = ({ open, title, description, onClose, children, footer }) 
           onClick={onClose}
         />
         <motion.aside
-          initial={{ x: 480, opacity: 0 }}
+          initial={{ x: 600, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          exit={{ x: 480, opacity: 0 }}
+          exit={{ x: 600, opacity: 0 }}
           transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-          className="relative flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl dark:bg-slate-900"
+          className={`relative flex h-full w-full flex-col bg-white shadow-2xl dark:bg-slate-900 ${className}`}
         >
           <header className="flex items-start justify-between border-b border-slate-200 p-6 dark:border-slate-800">
             <div>

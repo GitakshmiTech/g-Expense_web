@@ -44,6 +44,7 @@ export const api = {
   updateUser: async (id, payload) => (await http.patch(`/users/${id}`, payload)).data,
   companies: async () => (await http.get('/companies')).data,
   createCompany: async (payload) => (await http.post('/companies', payload)).data,
+  updateCompany: async (id, payload) => (await http.patch(`/companies/${id}`, payload)).data,
   budgets: async () => (await http.get('/budgets')).data,
   createBudget: async (payload) => (await http.post('/budgets', payload)).data,
   policies: async () => (await http.get('/policies')).data,
