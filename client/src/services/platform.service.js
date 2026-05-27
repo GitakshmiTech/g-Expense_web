@@ -40,6 +40,7 @@ export const api = {
   sharedExpenseParticipants: async (expenseId) => (await http.get('/expenses/shared/participants', { params: { expenseId } })).data,
   reimburseSharedExpense: async (payload) => (await http.post('/expenses/shared/reimburse', payload)).data,
   users: async () => (await http.get('/users')).data,
+  userDirectory: async () => (await http.get('/users/directory')).data,
   createUser: async (payload) => (await http.post('/users', payload)).data,
   updateUser: async (id, payload) => (await http.patch(`/users/${id}`, payload)).data,
   companies: async () => (await http.get('/companies')).data,
