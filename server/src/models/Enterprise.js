@@ -52,7 +52,35 @@ const expenseCategorySchema = new mongoose.Schema(
     defaultLimit: moneySchema,
     receiptMandatoryAbove: { type: Number, default: 0 },
     glCode: String,
-    active: { type: Boolean, default: true }
+    active: { type: Boolean, default: true },
+    limits: {
+      perExpense: { type: Number, default: 0 },
+      daily: { type: Number, default: 0 },
+      monthly: { type: Number, default: 0 },
+      roleBased: { type: mongoose.Schema.Types.Mixed, default: {} },
+      countryBased: { type: mongoose.Schema.Types.Mixed, default: {} }
+    },
+    compliance: {
+      receiptMandatory: { type: Boolean, default: false },
+      ocrMandatory: { type: Boolean, default: false },
+      gstMandatory: { type: Boolean, default: false },
+      allowedMimetypes: { type: [String], default: ['application/pdf', 'image/png', 'image/jpeg'] }
+    },
+    accounting: {
+      costCenter: String,
+      taxCode: String,
+      sapSegment: String,
+      oracleSegmentId: String
+    },
+    dynamicFields: { type: mongoose.Schema.Types.Mixed, default: [] },
+    workflow: {
+      approvalChain: { type: [String], default: ['Manager'] },
+      autoApprovalBelow: { type: Number, default: 0 }
+    },
+    aiSettings: {
+      fraudScoreThreshold: { type: Number, default: 40 },
+      anomalyDetectionEnabled: { type: Boolean, default: true }
+    }
   },
   { timestamps: true }
 );

@@ -20,6 +20,7 @@ import { workflowRoutes } from './routes/workflow.routes.js';
 import { managerRoutes } from './routes/manager.routes.js';
 import { financeRoutes } from './routes/finance.routes.js';
 import { enterpriseAnalyticsRoutes } from './routes/enterpriseAnalytics.routes.js';
+import { categoryRoutes } from './routes/category.routes.js';
 
 export const app = express();
 
@@ -44,6 +45,7 @@ app.use('/api/workflow', workflowRoutes);
 app.use('/api/manager', managerRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/enterprise-analytics', enterpriseAnalyticsRoutes);
+app.use('/api/expense-categories', categoryRoutes);
 app.use('/api', platformRoutes);
 
 app.use(notFound);
