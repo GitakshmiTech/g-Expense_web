@@ -1,4 +1,4 @@
-import { Department } from '../models/Enterprise.js';
+import { Department, ExpenseCategory } from '../models/Enterprise.js';
 import { PolicyEngineService } from '../services/policyEngine.service.js';
 
 export const evaluateExpensePolicy = async ({ companyId, user, expense, receiptCount }) => {
@@ -76,6 +76,87 @@ export const evaluateExpensePolicy = async ({ companyId, user, expense, receiptC
       severity: 'warning'
     });
   });
+
+  // Advanced Category-Specific Controls Validation
+  const categoryDoc = await ExpenseCategory.findOne({
+    companyId,
+    $or: [
+      { code: expense.category },
+      { name: expense.category }
+    ]
+  });
+
+  if (categoryDoc) {
+    // 1. Basic / Role Limits Validation
+    if (categoryDoc.limits) {
+      const perExpenseLimit = categoryDoc.limits.perExpense || categoryDoc.defaultLimit?.amount || 0;
+      if (perExpenseLimit > 0 && expense.amount > perExpenseLimit) {
+        violations.push({
+          code: 'LIMIT_EXCEEDED',
+          message: `Expense amount exceeds per-expense limit of ${perExpenseLimit} for category ${categoryDoc.name}`,
+          severity: 'block'
+        });
+      }
+
+      const userRole = user.role;
+      if (categoryDoc.limits.roleBased && categoryDoc.limits.roleBased[userRole]) {
+        const roleLimit = Number(categoryDoc.limits.roleBased[userRole]);
+        if (roleLimit > 0 && expense.amount > roleLimit) {
+          violations.push({
+            code: 'LIMIT_EXCEEDED',
+            message: `Expense amount exceeds role-based limit of ${roleLimit} for role ${userRole} in category ${categoryDoc.name}`,
+            severity: 'block'
+          });
+        }
+      }
+    }
+
+    // 2. Receipt and Tax Compliance
+    if (categoryDoc.compliance) {
+      const mandatoryReceipt = categoryDoc.compliance.receiptMandatory || (categoryDoc.receiptMandatoryAbove > 0 && expense.amount > categoryDoc.receiptMandatoryAbove);
+      if (mandatoryReceipt && count === 0) {
+        violations.push({
+          code: 'RECEIPT_REQUIRED',
+          message: `A receipt is mandatory for category ${categoryDoc.name}`,
+          severity: 'block'
+        });
+      }
+
+      if (categoryDoc.compliance.ocrMandatory && count > 0) {
+        // Warning if OCR mandatory but no OCR fields or low confidence
+        const ocrRequiredWarning = expense.receipts?.some(r => r.ocr && r.ocr.confidence < 0.6);
+        if (ocrRequiredWarning) {
+          violations.push({
+            code: 'POLICY_WARNING',
+            message: `Low OCR Confidence: High-precision OCR is recommended for category ${categoryDoc.name}`,
+            severity: 'warning'
+          });
+        }
+      }
+
+      if (categoryDoc.compliance.gstMandatory && !expense.taxAmount) {
+        violations.push({
+          code: 'GST_REQUIRED',
+          message: `GST/Tax details are mandatory for category ${categoryDoc.name}`,
+          severity: 'block'
+        });
+      }
+    }
+
+    // 3. Dynamic Custom Fields Check
+    if (Array.isArray(categoryDoc.dynamicFields) && categoryDoc.dynamicFields.length > 0) {
+      const customData = expense.customFields || {};
+      for (const field of categoryDoc.dynamicFields) {
+        if (field.isRequired && (customData[field.fieldId] === undefined || customData[field.fieldId] === null || customData[field.fieldId] === '')) {
+          violations.push({
+            code: 'MISSING_REQUIRED_FIELD',
+            message: `Context field '${field.label}' is required for expense category ${categoryDoc.name}`,
+            severity: 'block'
+          });
+        }
+      }
+    }
+  }
 
   return violations;
 };

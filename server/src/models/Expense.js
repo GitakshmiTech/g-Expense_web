@@ -91,7 +91,8 @@ const expenseSchema = new mongoose.Schema(
     policyViolations: [{ code: String, message: String, severity: String }],
     fraudFlags: [{ code: String, message: String, score: Number }],
     approvalPath: [{ approverRole: String, approverId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, status: String, actedAt: Date, note: String }],
-    receipts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Receipt' }]
+    receipts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Receipt' }],
+    customFields: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
 );

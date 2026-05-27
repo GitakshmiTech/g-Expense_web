@@ -9,6 +9,7 @@ import { Dashboard } from '../pages/dashboard/Dashboard';
 import { Expenses } from '../pages/expense/Expenses';
 import { ExpenseDetailsPage } from '../pages/expense/ExpenseDetailsPage';
 import { EnterpriseModulePage } from '../pages/enterprise/EnterpriseModulePage';
+import { ExpenseCategoriesPage } from '../pages/enterprise/ExpenseCategoriesPage';
 import { PanelDashboard } from '../pages/panels/PanelDashboard';
 import { WorkflowTablePage } from '../pages/panels/WorkflowTablePage';
 import { Policy } from '../pages/policy/Policy';
@@ -38,7 +39,7 @@ const router = createBrowserRouter([
       { path: 'approvals', element: <Approvals /> },
       { path: 'departments', element: <ProtectedPage page="departments"><EnterpriseModulePage moduleKey="departments" /></ProtectedPage> },
       { path: 'roles-permissions', element: <ProtectedPage page="roles_permissions"><RolesPermissions /></ProtectedPage> },
-      { path: 'expense-categories', element: <ProtectedPage page="expense_categories"><EnterpriseModulePage moduleKey="expense_categories" /></ProtectedPage> },
+      { path: 'expense-categories', element: <ProtectedPage page="expense_categories"><ExpenseCategoriesPage /></ProtectedPage> },
       { path: 'expense-reports', element: <ProtectedPage page="expense_reports"><ExpenseReports /></ProtectedPage> },
       { path: 'reimbursements', element: <ProtectedPage page="reimbursements"><Reimbursements /></ProtectedPage> },
       { path: 'ocr-receipts', element: <ProtectedPage page="ocr_receipts"><EnterpriseModulePage moduleKey="ocr_logs" /></ProtectedPage> },
