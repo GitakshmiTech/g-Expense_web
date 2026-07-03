@@ -21,6 +21,11 @@ import { managerRoutes } from './routes/manager.routes.js';
 import { financeRoutes } from './routes/finance.routes.js';
 import { enterpriseAnalyticsRoutes } from './routes/enterpriseAnalytics.routes.js';
 import { categoryRoutes } from './routes/category.routes.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const app = express();
 
@@ -47,6 +52,16 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/enterprise-analytics', enterpriseAnalyticsRoutes);
 app.use('/api/expense-categories', categoryRoutes);
 app.use('/api', platformRoutes);
+
+const clientDistPath = path.join(__dirname, '../../client/dist');
+app.use(express.static(clientDistPath));
+
+app.get('*', (req, res, next) => {
+  if (req.originalUrl.startsWith('/api')) {
+    return next();
+  }
+  res.sendFile(path.join(clientDistPath, 'index.html'));
+});
 
 app.use(notFound);
 app.use(errorHandler);
