@@ -1,6 +1,51 @@
 import mongoose from 'mongoose';
+import { env } from './src/config/env.js';
 
-mongoose.connect('mongodb://ivaharpal_db_user:expense%40123@ac-bachopk-shard-00-00.gg6eurm.mongodb.net:27017,ac-bachopk-shard-00-01.gg6eurm.mongodb.net:27017,ac-bachopk-shard-00-02.gg6eurm.mongodb.net:27017/gt_expence?ssl=true&replicaSet=atlas-gehmt9-shard-0&authSource=admin&retryWrites=true&w=majority')
-  .then(() => mongoose.connection.db.collection('users').updateOne({email: 'gtexpence@gmail.com'}, {$set: {role: 'super_admin', status: 'active'}}))
-  .then((res) => { console.log('Fixed', res); process.exit(0); })
-  .catch((err) => { console.error(err); process.exit(1); });
+async function fix() {
+  await mongoose.connect(env.mongoUri);
+  const users = await mongoose.connection.db.collection('users').find({}).toArray();
+  for (const user of users) {
+    let changed = false;
+    
+    // fix role to lowercase and map properly
+    if (user.role && user.role !== user.role.toLowerCase()) {
+      let newRole = user.role.toLowerCase();
+      if (newRole === 'company_admin') newRole = 'company_admin';
+      else if (newRole === 'super_admin') newRole = 'super_admin';
+      else if (newRole === 'manager') newRole = 'manager';
+      else if (newRole === 'finance') newRole = 'finance';
+      else if (newRole === 'cfo') newRole = 'cfo';
+      else if (newRole === 'employee') newRole = 'employee';
+      // else fallback to employee if unknown? No, just keep the lowercased version
+
+      if (user.role !== newRole) {
+        user.role = newRole;
+        changed = true;
+      }
+    }
+    
+    // fix status to lowercase
+    if (user.status && user.status !== user.status.toLowerCase()) {
+      user.status = user.status.toLowerCase();
+      changed = true;
+    }
+
+    if (changed) {
+      await mongoose.connection.db.collection('users').updateOne(
+        { _id: user._id },
+        { 
+          $set: { 
+            role: user.role,
+            status: user.status
+          }
+        }
+      );
+      console.log(`Fixed user role/status: ${user.email} -> ${user.role} / ${user.status}`);
+    }
+  }
+  
+  console.log('Done fixing users');
+  process.exit(0);
+}
+
+fix().catch(console.error);

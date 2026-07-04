@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Eye, Pencil, UserCheck, UserX } from 'lucide-react';
+import { Plus, Search, Eye, Pencil, UserCheck, UserX, Upload } from 'lucide-react';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable } from '../../components/tables/DataTable';
 import { Drawer } from '../../components/common/Drawer';
@@ -12,6 +12,7 @@ export const Employees = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [viewMode, setViewMode] = useState(false);
+  const fileInputRef = useRef(null);
   const canCreate = usePermission('employees', 'create');
   
   const [formData, setFormData] = useState({
@@ -52,6 +53,31 @@ export const Employees = () => {
     }
   });
 
+  const uploadMutation = useMutation({
+    mutationFn: api.uploadEmployeesExcel,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      let msg = `Successfully processed Excel.\nAdded: ${data.added}\nUpdated: ${data.updated}\nErrors: ${data.errors}`;
+      if (data.errorDetails && data.errorDetails.length > 0) {
+        msg += `\n\nError Details:\n${data.errorDetails.join('\n')}`;
+      }
+      alert(msg);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    },
+    onError: (error) => {
+      console.error('Failed to upload Excel', error);
+      alert('Failed to upload Excel: ' + (error.response?.data?.message || error.message));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  });
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadMutation.mutate(file);
+    }
+  };
+
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -60,6 +86,7 @@ export const Employees = () => {
     e.preventDefault();
     if (editingEmployee) {
       const { password, ...payload } = formData;
+      if (password) payload.password = password;
       updateMutation.mutate({ id: editingEmployee._id, payload });
     } else {
       mutation.mutate(formData);
@@ -130,17 +157,34 @@ export const Employees = () => {
               />
             </div>
             {canCreate && (
-              <button 
-                onClick={() => {
-                  setEditingEmployee(null);
-                  setViewMode(false);
-                  setFormData({ name: '', email: '', password: '', role: 'employee', department: '', employeeId: '' });
-                  setIsModalOpen(true);
-                }} 
-                className="btn btn-primary flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0"
-              >
-                <Plus className="h-4 w-4" /> Add Employee
-              </button>
+              <div className="flex gap-2">
+                <input
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()} 
+                  disabled={uploadMutation.isPending}
+                  className="btn btn-secondary flex items-center gap-2 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 px-4 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0 transition disabled:opacity-50"
+                >
+                  <Upload className="h-4 w-4" /> 
+                  {uploadMutation.isPending ? 'Uploading...' : 'Upload Excel'}
+                </button>
+                <button 
+                  onClick={() => {
+                    setEditingEmployee(null);
+                    setViewMode(false);
+                    setFormData({ name: '', email: '', password: '', role: 'employee', department: '', employeeId: '' });
+                    setIsModalOpen(true);
+                  }} 
+                  className="btn btn-primary flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0"
+                >
+                  <Plus className="h-4 w-4" /> Add Employee
+                </button>
+              </div>
             )}
           </>
         }
@@ -277,18 +321,20 @@ export const Employees = () => {
               placeholder="john@example.com"
             />
           </div>
-          {!editingEmployee && (
+          {!viewMode && (
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                {editingEmployee ? 'Reset Password (optional)' : 'Password'}
+              </label>
               <input 
                 type="password" 
                 name="password" 
-                value={formData.password} 
+                value={formData.password || ''} 
                 onChange={handleChange} 
                 required={!editingEmployee} 
                 disabled={viewMode}
                 className="w-full p-2 border border-slate-300 rounded-lg dark:bg-slate-800 dark:border-slate-700 dark:text-white disabled:opacity-60"
-                placeholder="••••••••"
+                placeholder={editingEmployee ? "Leave blank to keep unchanged" : "••••••••"}
               />
             </div>
           )}

@@ -43,6 +43,11 @@ export const api = {
   userDirectory: async () => (await http.get('/users/directory')).data,
   createUser: async (payload) => (await http.post('/users', payload)).data,
   updateUser: async (id, payload) => (await http.patch(`/users/${id}`, payload)).data,
+  uploadEmployeesExcel: async (file) => {
+    const body = new FormData();
+    body.append('file', file);
+    return (await http.post('/users/upload', body)).data;
+  },
   companies: async () => (await http.get('/companies')).data,
   createCompany: async (payload) => (await http.post('/companies', payload)).data,
   updateCompany: async (id, payload) => (await http.patch(`/companies/${id}`, payload)).data,

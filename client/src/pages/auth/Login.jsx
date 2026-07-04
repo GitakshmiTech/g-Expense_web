@@ -10,7 +10,7 @@ import { authService } from '../../services/auth.service';
 import { setCredentials } from '../../redux/authSlice';
 import { landingPathForRole } from '../../utils/roleRoutes';
 
-const schema = z.object({ email: z.string().email(), password: z.string().min(1), otp: z.string().optional() });
+const schema = z.object({ email: z.string().min(1, 'Required'), password: z.string().min(1, 'Required'), otp: z.string().optional() });
 
 export const Login = () => {
   const dispatch = useDispatch();
@@ -30,8 +30,8 @@ export const Login = () => {
       <form className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900" onSubmit={handleSubmit((values) => login.mutate(values))}>
         <h2 className="mb-6 text-center text-2xl font-bold dark:text-white">Login</h2>
         <label className="mb-4 block text-sm font-medium dark:text-slate-200">
-          Email
-          <input className="input mt-1 w-full" placeholder="Enter your email" {...register('email')} />
+          Email or Employee Code
+          <input className="input mt-1 w-full" placeholder="Enter email or employee code" {...register('email')} />
         </label>
         <label className="mb-6 block text-sm font-medium dark:text-slate-200">
           Password
