@@ -29,6 +29,7 @@ const __dirname = path.dirname(__filename);
 
 export const app = express();
 
+app.set('trust proxy', 1); // Trust first proxy (like Nginx/Cloudflare) to fix express-rate-limit X-Forwarded-For error
 app.use(helmet());
 app.use(cors({ origin: env.clientUrl, credentials: true }));
 app.use(compression());
