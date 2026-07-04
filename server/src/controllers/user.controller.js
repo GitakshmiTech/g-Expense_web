@@ -155,12 +155,15 @@ export const uploadUsersExcel = asyncHandler(async (req, res) => {
     const accountNumber = getVal('ac number') || getVal('account number') || '';
     const ifscCode = getVal('ifsic') || getVal('ifsc') || '';
 
+    const finalEmployeeCode = employeeCode ? employeeCode.toString() : `EMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
     const userData = {
       companyId: req.companyId,
       name: name || email.split('@')[0],
       email: email.toString().toLowerCase().trim(),
       password,
-      employeeId: employeeCode ? employeeCode.toString() : '',
+      employeeId: finalEmployeeCode,
+      employeeCode: finalEmployeeCode,
       department: department.toString(),
       designation: designation.toString(),
       phone: phone.toString(),
