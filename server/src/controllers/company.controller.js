@@ -26,7 +26,8 @@ export const createCompany = asyncHandler(async (req, res) => {
 });
 
 export const listCompanies = asyncHandler(async (req, res) => {
-  const companies = await Company.find().sort({ createdAt: -1 });
+  const query = req.user.role === 'company_admin' ? { _id: req.user.companyId } : {};
+  const companies = await Company.find(query).sort({ createdAt: -1 });
   const companiesWithAdmin = await Promise.all(companies.map(async (company) => {
     const companyObj = company.toObject();
     if (!companyObj.adminEmail || !companyObj.adminName || !companyObj.adminPassword) {
@@ -43,6 +44,10 @@ export const listCompanies = asyncHandler(async (req, res) => {
 });
 
 export const updateCompany = asyncHandler(async (req, res) => {
+  if (req.user.role === 'company_admin' && String(req.user.companyId) !== String(req.params.id)) {
+    throw new ApiError(403, 'You do not have permission to update this company');
+  }
+
   const before = await Company.findById(req.params.id);
   const company = await Company.findByIdAndUpdate(req.params.id, req.body, { new: true });
   

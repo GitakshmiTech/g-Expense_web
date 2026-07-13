@@ -20,6 +20,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, lowercase: true, trim: true, index: true },
     password: { type: String, required: true, select: false },
     employeeId: { type: String, index: true },
+    employeeCode: { type: String, index: true },
     role: {
       type: String,
       enum: ['super_admin', 'company_admin', 'manager', 'finance', 'cfo', 'employee'],
@@ -68,6 +69,7 @@ userSchema.pre('save', async function hashPassword(next) {
 });
 
 userSchema.methods.comparePassword = function comparePassword(candidate) {
+  if (!candidate || !this.password) return Promise.resolve(false);
   return bcrypt.compare(candidate, this.password);
 };
 
