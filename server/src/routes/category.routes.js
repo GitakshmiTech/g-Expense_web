@@ -7,10 +7,24 @@ import { ExpenseCategory, Department } from '../models/Enterprise.js';
 import { EnterprisePolicy } from '../models/EnterprisePolicy.js';
 import { Expense } from '../models/Expense.js';
 import { User } from '../models/User.js';
+import { ensureExpenseCategoryCatalog } from '../services/category.service.js';
 
 export const categoryRoutes = Router();
 
 categoryRoutes.use(authenticate, enforceTenant);
+
+/**
+ * @route   GET /api/expense-categories/catalog
+ * @desc    Active category catalog for employee expense submission.
+ */
+categoryRoutes.get(
+  '/catalog',
+  asyncHandler(async (req, res) => {
+    const categories = await ensureExpenseCategoryCatalog({ companyId: req.companyId, actorId: req.user?._id });
+
+    res.json(categories.map((category) => category.toObject ? category.toObject() : category));
+  })
+);
 
 /**
  * @route   POST /api/expense-categories/simulate-impact
@@ -28,6 +42,7 @@ categoryRoutes.post(
     }
 
     const categoryCode = targetCategory?.code || req.body.categoryCode;
+    const categoryName = targetCategory?.name || req.body.categoryName || categoryCode;
     if (!categoryCode) {
       throw new ApiError(400, 'Category identifier is required for simulation');
     }
@@ -44,7 +59,7 @@ categoryRoutes.post(
     // 2. Scan pending transactions affected (in validation or draft state)
     const pendingTransactions = await Expense.find({
       companyId,
-      category: categoryCode,
+      category: { $in: [categoryCode, categoryName] },
       status: { $in: ['DRAFT', 'VALIDATING', 'SENT_BACK', 'submitted', 'manager_review'] }
     }).select('_id amount employeeId').lean();
 

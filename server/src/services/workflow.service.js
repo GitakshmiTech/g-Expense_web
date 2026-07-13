@@ -6,6 +6,7 @@ import { Approval, ExpenseReport, Reimbursement } from '../models/Enterprise.js'
 import { evaluateExpensePolicy } from '../policies/policy.engine.js';
 import { detectFraud } from './fraud.service.js';
 import { enqueueNotification } from '../jobs/queue.js';
+import { notifyRole } from '../notification/notification.service.js';
 
 const terminalStatuses = ['approved', 'rejected', 'sent_back', 'paid'];
 
@@ -123,6 +124,17 @@ export const managerReviewReport = async ({ req, report, action, note }) => {
   );
   if (action === 'approve' || action === 'escalate') {
     await Approval.create({ companyId: req.companyId, module: 'report', recordId: report._id, approverRole: 'finance', step: 2, status: 'pending', createdBy: req.user._id, updatedBy: req.user._id });
+    await notifyRole({
+      companyId: req.companyId,
+      roles: ['finance', 'company_admin'],
+      excludeUserIds: [req.user?._id, report.employeeId],
+      title: 'Expense report moved to your queue',
+      message: `${report.title || 'An expense report'} is now waiting for finance verification.`,
+      category: 'approval',
+      priority: 'high',
+      actionUrl: '/finance/verification',
+      data: { kind: 'report', reportId: report._id, reportNo: report.reportNo, status: report.status, actorId: req.user?._id, actorName: req.user?.name }
+    });
   }
   await enqueueNotification({ companyId: req.companyId, userId: report.employeeId, title: `Report ${report.status}`, message: note || `Your report is now ${report.status}`, data: { reportId: report._id } });
   await writeAudit({ req, action: `report.manager.${action}`, entity: 'ExpenseReport', entityId: report._id.toString(), after: report.toObject() });
@@ -161,6 +173,13 @@ export const financeVerifyReport = async ({ req, report, action, note }) => {
       updatedBy: req.user._id
     });
   }
+  await enqueueNotification({
+    companyId: req.companyId,
+    userId: report.employeeId,
+    title: `Report ${report.status}`,
+    message: note || `Your report is now ${report.status.replaceAll('_', ' ')}`,
+    data: { reportId: report._id }
+  });
   await writeAudit({ req, action: `report.finance.${action}`, entity: 'ExpenseReport', entityId: report._id.toString(), after: report.toObject() });
   return report;
 };

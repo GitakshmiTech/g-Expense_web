@@ -26,6 +26,7 @@ export const expenseSchema = Joi.object({
   splitType: Joi.string().valid('equal', 'percentage', 'custom').optional(),
   splitValues: Joi.object().pattern(Joi.string(), Joi.number().min(0)).optional(),
   reimbursementMode: Joi.string().valid('creator_full', 'individual').optional(),
+  customFields: Joi.object().unknown(true).default({}),
   receiptFile: Joi.object({
     fileName: Joi.string().required(),
     originalName: Joi.string().required(),

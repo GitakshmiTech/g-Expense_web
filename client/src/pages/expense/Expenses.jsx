@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Eye, Plus, Send, Trash2 } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApprovalTimeline } from '../../components/common/ApprovalTimeline';
 import { Drawer } from '../../components/common/Drawer';
@@ -12,13 +13,12 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { ExpenseForm } from '../../components/forms/ExpenseForm';
 import { DataTable } from '../../components/tables/DataTable';
 import { api } from '../../services/platform.service';
+import { DRAFT_STATUSES, REVIEW_STATUSES, normalizeExpenseStatus, canActOnExpense } from '../../utils/expenseWorkflow';
 
 const money = (amount, currency = 'INR') => `${currency === 'INR' ? '₹' : currency} ${Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 })}`;
-const DRAFT_STATUSES = ['DRAFT', 'SENT_BACK', 'draft', 'sent_back'];
-const REVIEW_STATUSES = ['PENDING_MANAGER', 'PENDING_FINANCE', 'PENDING_ACCOUNTS', 'UNDER_VERIFICATION', 'manager_review', 'finance_review', 'cfo_review'];
-const TERMINAL_STATUSES = ['REIMBURSED', 'CLOSED', 'REJECTED', 'approved', 'rejected', 'paid', 'reimbursed', 'closed'];
 
 export const Expenses = () => {
+  const user = useSelector((state) => state.auth.user);
   const [showForm, setShowForm] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [selectedExpense, setSelectedExpense] = useState(null);
@@ -87,10 +87,11 @@ export const Expenses = () => {
 
   const filtered = useMemo(() => {
     return data.filter((expense) => {
-      if (activeTab === 'draft' && !['DRAFT', 'draft'].includes(expense.status)) return false;
-      if (activeTab === 'submitted' && !['submitted', 'manager_review', 'finance_review', 'cfo_review'].includes(expense.status)) return false;
-      if (activeTab === 'approved' && !['approved', 'reimbursed', 'closed', 'paid'].includes(expense.status)) return false;
-      if (activeTab === 'rejected' && !['rejected', 'sent_back'].includes(expense.status)) return false;
+      const normalizedStatus = normalizeExpenseStatus(expense.status);
+      if (activeTab === 'draft' && !DRAFT_STATUSES.includes(normalizedStatus)) return false;
+      if (activeTab === 'submitted' && !REVIEW_STATUSES.includes(normalizedStatus)) return false;
+      if (activeTab === 'approved' && !['UNDER_VERIFICATION', 'PAYMENT_PROCESSING', 'REIMBURSED', 'CLOSED'].includes(normalizedStatus)) return false;
+      if (activeTab === 'rejected' && !['REJECTED', 'SENT_BACK'].includes(normalizedStatus)) return false;
 
       const haystack = `${expense.category} ${expense.merchant} ${expense.employeeId?.name} ${expense.status}`.toLowerCase();
       return (!status || expense.status === status) && (!search || haystack.includes(search.toLowerCase()));
@@ -118,12 +119,13 @@ export const Expenses = () => {
       header: 'Action',
       cell: ({ row }) => {
         const exp = row.original;
+        const normalizedStatus = normalizeExpenseStatus(exp.status);
         return (
           <div className="flex gap-2">
             <button className="btn-secondary px-2 py-1.5" onClick={() => setSelectedExpense(exp)} title="View details">
               <Eye className="h-4 w-4" />
             </button>
-            {DRAFT_STATUSES.includes(exp.status) && (
+            {DRAFT_STATUSES.includes(normalizedStatus) && (
               <>
                 <button className="btn-primary py-1.5 flex items-center gap-1 text-xs" onClick={() => submit.mutate(exp._id)} disabled={submit.isPending}>
                   <Send className="h-3 w-3" /> Submit
@@ -133,7 +135,7 @@ export const Expenses = () => {
                 </button>
               </>
             )}
-            {REVIEW_STATUSES.includes(exp.status) && (
+            {REVIEW_STATUSES.includes(normalizedStatus) && canActOnExpense(normalizedStatus, user?.role) && (
               <button className="btn-secondary py-1.5 text-xs" onClick={() => { setApprovalExpense(exp); setNoteText(''); }}>
                 Approve
               </button>
@@ -142,7 +144,7 @@ export const Expenses = () => {
         );
       }
     }
-  ], [submit.isPending, deleteDraft.isPending]);
+  ], [submit.isPending, deleteDraft.isPending, user?.role]);
 
   const severityColor = (sev) => sev === 'block' ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200' : 'border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200';
 
@@ -285,7 +287,7 @@ export const Expenses = () => {
               </div>
             </section>
 
-            {DRAFT_STATUSES.includes(selectedExpense.status) && (
+            {DRAFT_STATUSES.includes(normalizeExpenseStatus(selectedExpense.status)) && (
               <button
                 className="btn-primary w-full flex items-center justify-center gap-2"
                 onClick={async () => {

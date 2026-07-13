@@ -10,6 +10,7 @@ import { Workflow } from '../models/Workflow.js';
 import { Expense } from '../models/Expense.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { Notification } from '../models/Notification.js';
+import { Approval } from '../models/Enterprise.js';
 
 export const crud = (Model) => ({
   list: asyncHandler(async (req, res) => {
@@ -33,13 +34,39 @@ export const workflows = crud(Workflow);
 
 export const analytics = asyncHandler(async (req, res) => {
   const filter = tenantFilter(req);
-  const [byStatus, byDepartment, byCategory, totals] = await Promise.all([
+  const [byStatus, byDepartment, byCategory, totals, monthlySpend, budgetUsage, approvalSla] = await Promise.all([
     Expense.aggregate([{ $match: filter }, { $group: { _id: '$status', total: { $sum: '$amount' }, count: { $sum: 1 } } }]),
     Expense.aggregate([{ $match: filter }, { $lookup: { from: 'users', localField: 'employeeId', foreignField: '_id', as: 'employee' } }, { $unwind: '$employee' }, { $group: { _id: '$employee.department', total: { $sum: '$amount' } } }]),
     Expense.aggregate([{ $match: filter }, { $group: { _id: '$category', total: { $sum: '$amount' } } }]),
-    Expense.aggregate([{ $match: filter }, { $group: { _id: null, totalSpend: { $sum: '$amount' }, count: { $sum: 1 }, avg: { $avg: '$amount' } } }])
+    Expense.aggregate([{ $match: filter }, { $group: { _id: null, totalSpend: { $sum: '$amount' }, count: { $sum: 1 }, avg: { $avg: '$amount' } } }]),
+    Expense.aggregate([
+      { $match: filter },
+      { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$expenseDate' } }, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+      { $limit: 12 }
+    ]),
+    Budget.find({ ...filter, status: 'active' }).sort({ createdAt: -1 }).limit(10).lean(),
+    Approval.aggregate([
+      { $match: filter },
+      {
+        $project: {
+          hours: {
+            $divide: [{ $subtract: ['$updatedAt', '$createdAt'] }, 1000 * 60 * 60]
+          }
+        }
+      },
+      { $group: { _id: null, averageHours: { $avg: '$hours' } } }
+    ])
   ]);
-  res.json({ byStatus, byDepartment, byCategory, totals: totals[0] || { totalSpend: 0, count: 0, avg: 0 } });
+  res.json({
+    byStatus,
+    byDepartment,
+    byCategory,
+    monthlySpend,
+    budgetUsage,
+    approvalSla: approvalSla[0] || { averageHours: 0 },
+    totals: totals[0] || { totalSpend: 0, count: 0, avg: 0 }
+  });
 });
 
 export const auditLogs = asyncHandler(async (req, res) => {
@@ -79,6 +106,9 @@ export const exportReport = asyncHandler(async (req, res) => {
   res.header('Content-Type', 'application/pdf');
   doc.pipe(res);
   doc.fontSize(18).text('GT Expense Report');
-  data.forEach((row) => doc.fontSize(10).text(`${row.date?.toISOString().slice(0, 10)} | ${row.employee} | ${row.category} | ${row.amount} ${row.currency} | ${row.status}`));
+  data.forEach((row) => {
+    const dateStr = row.date ? new Date(row.date).toISOString().slice(0, 10) : 'N/A';
+    doc.fontSize(10).text(`${dateStr} | ${row.employee || 'N/A'} | ${row.category || 'N/A'} | ${row.amount || 0} ${row.currency || 'INR'} | ${row.status || 'Draft'}`);
+  });
   doc.end();
 });

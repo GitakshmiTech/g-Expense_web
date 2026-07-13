@@ -20,6 +20,7 @@ export const authenticate = async (req, res, next) => {
 };
 
 export const requireRoles = (...roles) => (req, res, next) => {
+  if (req.user.role === 'super_admin') return next();
   if (!roles.includes(req.user.role)) return next(new ApiError(403, 'Insufficient role'));
   next();
 };

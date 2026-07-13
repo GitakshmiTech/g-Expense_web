@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, Clock3, FileText, History, MessageSquare, ReceiptText, ShieldCheck, WalletCards } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, CreditCard, FileText, History, MessageSquare, ReceiptText, RotateCcw, Send, ShieldCheck, WalletCards, X } from 'lucide-react';
 import { ApprovalTimeline } from '../../components/common/ApprovalTimeline';
 import { EmptyState } from '../../components/common/EmptyState';
 import { LoadingSkeleton } from '../../components/common/LoadingSkeleton';
 import { PageHeader } from '../../components/common/PageHeader';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { api } from '../../services/platform.service';
+import { DRAFT_STATUSES, canActOnExpense, getExpenseStage, getNextProcessText, normalizeExpenseStatus } from '../../utils/expenseWorkflow';
 
 const money = (amount, currency = 'INR') => `${currency === 'INR' ? '₹' : currency} ${Number(amount || 0).toLocaleString('en-IN')}`;
 
@@ -38,11 +40,44 @@ const AuditRow = ({ action, detail, at }) => (
   </div>
 );
 
+const WorkflowProgress = ({ status }) => (
+  <section className="panel p-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 className="font-bold text-slate-950 dark:text-white">Expense Process</h2>
+        <p className="mt-1 text-sm text-slate-500">{getNextProcessText(status)}</p>
+      </div>
+      <StatusBadge status={status} />
+    </div>
+    <div className="mt-5 grid gap-3 md:grid-cols-6">
+      {getExpenseStage(status).map((stage) => (
+        <div key={stage.key} className={`rounded-xl border p-3 text-sm ${stage.done ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : stage.active ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300' : stage.blocked ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' : 'border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-900'}`}>
+          <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/70 dark:bg-slate-950/40">
+            {stage.done ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+          </div>
+          <p className="font-semibold">{stage.label}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+);
+
 export const ExpenseDetailsPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const user = useSelector((state) => state.auth.user);
   const [activeTab, setActiveTab] = useState('overview');
   const { data: expense, isLoading } = useQuery({ queryKey: ['expense', id], queryFn: () => api.getExpense(id), enabled: Boolean(id) });
+  const refreshExpense = () => {
+    queryClient.invalidateQueries({ queryKey: ['expense', id] });
+    queryClient.invalidateQueries({ queryKey: ['expenses'] });
+  };
+  const submitExpense = useMutation({ mutationFn: () => api.submitExpense(id), onSuccess: refreshExpense });
+  const actExpense = useMutation({ mutationFn: (payload) => api.actExpense(id, payload), onSuccess: refreshExpense });
+  const financeVerify = useMutation({ mutationFn: (payload) => api.financeVerifyExpense(id, payload), onSuccess: refreshExpense });
+  const reimburse = useMutation({ mutationFn: (payload) => api.reimburseExpense(id, payload), onSuccess: refreshExpense });
+  const closeExpense = useMutation({ mutationFn: (payload) => api.closeExpense(id, payload), onSuccess: refreshExpense });
 
   const auditLogs = useMemo(() => {
     if (!expense) return [];
@@ -61,6 +96,9 @@ export const ExpenseDetailsPage = () => {
   if (!expense) return <EmptyState title="Expense not found" description="The requested expense is not available in this workspace." />;
 
   const flags = [...(expense.policyViolations || []), ...(expense.fraudFlags || [])];
+  const normalizedStatus = normalizeExpenseStatus(expense.status);
+  const canAct = canActOnExpense(normalizedStatus, user?.role);
+  const processing = submitExpense.isPending || actExpense.isPending || financeVerify.isPending || reimburse.isPending || closeExpense.isPending;
 
   return (
     <>
@@ -92,6 +130,61 @@ export const ExpenseDetailsPage = () => {
             </button>
           );
         })}
+      </div>
+
+      <div className="mb-5 space-y-4">
+        <WorkflowProgress status={normalizedStatus} />
+        {canAct && (
+          <section className="panel flex flex-wrap items-center justify-between gap-3 p-4">
+            <div>
+              <p className="text-sm font-bold text-slate-950 dark:text-white">Next Action</p>
+              <p className="text-sm text-slate-500">{getNextProcessText(normalizedStatus)}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {DRAFT_STATUSES.includes(normalizedStatus) && (
+                <button className="btn-primary flex items-center gap-2" disabled={processing} onClick={() => submitExpense.mutate()}>
+                  <Send className="h-4 w-4" /> Submit for Approval
+                </button>
+              )}
+              {['PENDING_MANAGER', 'PENDING_FINANCE', 'PENDING_ACCOUNTS'].includes(normalizedStatus) && (
+                <>
+                  <button className="btn-secondary flex items-center gap-2" disabled={processing} onClick={() => actExpense.mutate({ action: 'send_back', note: 'Please update and resubmit.' })}>
+                    <RotateCcw className="h-4 w-4" /> Send Back
+                  </button>
+                  <button className="btn-secondary flex items-center gap-2 text-rose-600" disabled={processing} onClick={() => actExpense.mutate({ action: 'reject', note: 'Rejected after review.' })}>
+                    <X className="h-4 w-4" /> Reject
+                  </button>
+                  <button className="btn-primary flex items-center gap-2" disabled={processing} onClick={() => actExpense.mutate({ action: 'approve', note: 'Approved.' })}>
+                    <CheckCircle2 className="h-4 w-4" /> Approve
+                  </button>
+                </>
+              )}
+              {normalizedStatus === 'UNDER_VERIFICATION' && (
+                <>
+                  <button className="btn-secondary flex items-center gap-2" disabled={processing} onClick={() => actExpense.mutate({ action: 'send_back', note: 'Finance needs corrected bill details.' })}>
+                    <RotateCcw className="h-4 w-4" /> Send Back
+                  </button>
+                  <button className="btn-secondary flex items-center gap-2 text-rose-600" disabled={processing} onClick={() => actExpense.mutate({ action: 'reject', note: 'Rejected during finance verification.' })}>
+                    <X className="h-4 w-4" /> Reject
+                  </button>
+                  <button className="btn-primary flex items-center gap-2" disabled={processing} onClick={() => financeVerify.mutate({ action: 'verify', note: 'Bill and policy verification completed.' })}>
+                    <ShieldCheck className="h-4 w-4" /> Start Reimbursement
+                  </button>
+                </>
+              )}
+              {normalizedStatus === 'PAYMENT_PROCESSING' && (
+                <button className="btn-primary flex items-center gap-2" disabled={processing} onClick={() => reimburse.mutate({ method: 'bank_transfer', markPaid: true, transactionId: `PAY-${Date.now()}` })}>
+                  <CreditCard className="h-4 w-4" /> Mark Paid
+                </button>
+              )}
+              {normalizedStatus === 'REIMBURSED' && (
+                <button className="btn-secondary flex items-center gap-2" disabled={processing} onClick={() => closeExpense.mutate({ note: 'Expense closed after reimbursement.' })}>
+                  <CheckCircle2 className="h-4 w-4" /> Close Expense
+                </button>
+              )}
+            </div>
+          </section>
+        )}
       </div>
 
       {activeTab === 'overview' && (

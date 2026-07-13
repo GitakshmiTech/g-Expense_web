@@ -1,0 +1,56 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start MongoDB",
+      "type": "shell",
+      "command": "& \"C:/Program Files/MongoDB/Server/8.3/bin/mongod.exe\" --dbpath \"C:/Users/ASUS/Desktop/bruno/Expense-management-system/server/.mongo-data\"",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "group": "database",
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Start Backend Server",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/server"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "group": "backend",
+        "reveal": "always",
+        "panel": "new"
+      },
+      "dependsOn": ["Start MongoDB"]
+    },
+    {
+      "label": "Start Client (Vite)",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/client"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "group": "frontend",
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Start All Services",
+      "dependsOn": ["Start Backend Server", "Start Client (Vite)"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, CheckCheck, Download, IndianRupee, Bell, Building2, ClipboardCheck, CreditCard, FileSearch, FileText, Gauge, Landmark, Layers3, Plane, ReceiptText, Settings, ShieldCheck, Users, WalletCards, Eye, Send, X, MessageSquare, CornerDownLeft, Sparkles, XCircle, CheckCircle2, RefreshCw, BarChart3, Clock, TrendingUp } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../components/common/EmptyState';
 import { PageHeader } from '../../components/common/PageHeader';
 import { SkeletonBlock } from '../../components/common/SkeletonBlock';
@@ -12,19 +13,24 @@ import { api } from '../../services/platform.service';
 
 const money = (value, currency = 'INR') => `${currency === 'INR' ? '₹' : currency} ${Math.round(Number(value || 0)).toLocaleString()}`;
 
-const approvalColumns = (onAction, panel) => [
+const approvalColumns = (onAction, panel, navigate) => [
   { header: 'Employee', accessorKey: 'employee', cell: ({ row }) => row.original.employeeId?.name || '-' },
   { header: 'Type', cell: ({ row }) => <span className="capitalize text-xs font-medium text-slate-500">{row.original.kind || 'report'}</span> },
-  { header: 'Category / Report', cell: ({ row }) => row.original.category || row.original.title || row.original.name || '-' },
+  { header: 'Category / Report', cell: ({ row }) => row.original.category || row.original.title || row.original.name || row.original.purpose || '-' },
   { header: 'Merchant / Destination', cell: ({ row }) => row.original.merchant || row.original.destination || '-' },
-  { header: 'Amount', accessorKey: 'amount', cell: ({ row }) => money(row.original.amount || row.original.totalAmount, row.original.currency) },
+  { header: 'Amount', accessorKey: 'amount', cell: ({ row }) => money(row.original.amount || row.original.totalAmount || row.original.estimatedCost || row.original.budget?.amount || row.original.requested?.amount || 0, row.original.currency || row.original.budget?.currency || row.original.requested?.currency) },
   { header: 'Status', accessorKey: 'status', cell: ({ row }) => <StatusBadge status={row.original.status} /> },
   {
     header: 'Actions',
     accessorKey: '_id',
     cell: ({ row }) => (
       <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-        <button className="btn-secondary py-1 text-xs" onClick={() => onAction(row.original._id, 'approve', row.original.kind || 'expense')}>
+        {(row.original.kind === 'expense' || !row.original.kind) && (
+          <button className="btn-secondary p-1 hover:text-brand-600" onClick={() => navigate(`/expenses/${row.original._id}`)} title="View Detailed Verification Page">
+            <Eye className="h-4 w-4" />
+          </button>
+        )}
+        <button className="btn-secondary py-1 text-xs" onClick={() => onAction(row.original._id, panel === 'finance' ? 'verify' : 'approve', row.original.kind || 'expense')}>
           {panel === 'finance' ? 'Verify' : 'Approve'}
         </button>
         <button className="btn-secondary py-1 text-xs" onClick={() => onAction(row.original._id, 'send_back', row.original.kind || 'expense')}>Send Back</button>
@@ -55,6 +61,7 @@ const reportColumns = (onAction, panel) => [
 
 export const WorkflowTablePage = ({ panel, type }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const isFinance = panel === 'finance';
   
   const [activeTab, setActiveTab] = useState('all');
@@ -113,7 +120,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
       if (type === 'violations') return isFinance ? api.financeFraud() : api.managerViolations();
       if (type === 'audit') return isFinance ? api.financeCompliance() : api.approvalHistory();
       if (type === 'budgets') return isFinance ? api.budgets() : api.managerBudgets();
-      if (type === 'trips') return isFinance ? api.travels() : api.managerTrips();
+      if (type === 'trips') return isFinance ? api.travelRequests() : api.managerTrips();
       if (type === 'notifications') return isFinance ? api.notifications() : api.managerNotifications();
       if (type === 'analytics') return isFinance ? api.financeBusinessDashboard() : api.managerAnalytics();
       return [];
@@ -121,10 +128,19 @@ export const WorkflowTablePage = ({ panel, type }) => {
   });
 
   const reportAction = useMutation({
-    mutationFn: ({ id, action, targetType = 'report' }) => 
-      isFinance 
-        ? api.financeVerificationAction({ reportId: id, action, note: actionNote || `${action} from ${panel} panel` }) 
-        : api.managerApprovalAction({ targetType, id, action, note: actionNote || `${action} from ${panel} panel` }),
+    mutationFn: ({ id, action, targetType = 'report' }) => {
+      const note = actionNote || `${action} from ${panel} panel`;
+      if (isFinance) {
+        if (targetType === 'trip') {
+          return api.actTravelRequest(id, { action: action === 'verify' ? 'approve' : action, note });
+        }
+        if (targetType === 'expense') {
+          return api.actExpense(id, { action, note });
+        }
+        return api.financeVerificationAction({ reportId: id, action, note });
+      }
+      return api.managerApprovalAction({ targetType, id, action, note });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [panel, type] });
       setActionNote('');
@@ -159,7 +175,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
       if (activeTab === 'rejected') return ['rejected'].includes(r.status);
     }
     if (panel === 'manager' && type === 'approvals') {
-      const pending = ['submitted', 'manager_review'].includes(r.status);
+      const pending = ['submitted', 'manager_review', 'PENDING_MANAGER'].includes(r.status);
       if (activeTab === 'queue' || activeTab === 'bulk') return pending;
       if (activeTab === 'escalated') {
         const amt = r.amount || r.totalAmount || 0;
@@ -176,7 +192,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
       if (activeTab === 'suspicious') {
         return r.riskScore > 50 || r.fraudFlags?.length > 0 || r.policyViolations?.length > 0;
       }
-      return ['submitted', 'manager_approved', 'manager_review'].includes(r.status);
+      return ['submitted', 'manager_approved', 'manager_review', 'PENDING_FINANCE', 'PENDING_CFO'].includes(r.status);
     }
     
     // -- Finance Reimbursements filtering --
@@ -193,8 +209,8 @@ export const WorkflowTablePage = ({ panel, type }) => {
       if (activeTab === 'rejected') return ['rejected'].includes(r.status);
     }
     if (type === 'trips') {
-      if (activeTab === 'pending') return ['submitted'].includes(r.status);
-      if (activeTab === 'approved') return ['approved'].includes(r.status);
+      if (activeTab === 'pending') return ['SUBMITTED', 'PENDING_MANAGER', 'PENDING_FINANCE', 'PENDING_CFO', 'submitted'].includes(r.status);
+      if (activeTab === 'approved') return ['APPROVED', 'approved'].includes(r.status);
     }
     if (type === 'budgets') {
       if (activeTab === 'alerts') return (r.consumed / r.amount) > 0.8;
@@ -210,13 +226,13 @@ export const WorkflowTablePage = ({ panel, type }) => {
       }
     }
     if (type === 'notifications') {
-      if (activeTab === 'unread') return !r.read && r.status !== 'read';
+      if (activeTab === 'unread') return !r.readAt && r.status !== 'read';
     }
     return true;
   });
 
   const columns = (() => {
-    if (type === 'approvals' || type === 'verification') return approvalColumns((id, action, targetType) => reportAction.mutate({ id, action, targetType }), panel);
+    if (type === 'approvals' || type === 'verification') return approvalColumns((id, action, targetType) => reportAction.mutate({ id, action, targetType }), panel, navigate);
     if (type === 'reports') return reportColumns((id, action, targetType) => reportAction.mutate({ id, action, targetType }), panel);
     if (type === 'reimbursements') return [
       { header: 'Employee', accessorKey: 'employee', cell: ({ row }) => row.original.employeeId?.name || '-' },
@@ -261,63 +277,90 @@ export const WorkflowTablePage = ({ panel, type }) => {
       { header: 'Trip', accessorKey: 'title' },
       { header: 'Employee', cell: ({ row }) => row.original.employeeId?.name || '-' },
       { header: 'Destination', accessorKey: 'destination' },
-      { header: 'Estimate', accessorKey: 'estimatedCost', cell: ({ row }) => money(row.original.estimatedCost) },
+      { header: 'Estimate', accessorKey: 'estimatedCost', cell: ({ row }) => money(row.original.estimatedCost || row.original.budget?.amount || row.original.estimate?.estimatedTotal, row.original.budget?.currency || row.original.currency) },
       { header: 'Status', accessorKey: 'status', cell: ({ row }) => <StatusBadge status={row.original.status} /> },
-      { header: 'Actions', cell: ({ row }) => <div className="flex gap-2" onClick={(e) => e.stopPropagation()}><button className="btn-secondary py-1 text-xs" onClick={() => reportAction.mutate({ id: row.original._id, action: 'approve', targetType: 'trip' })}>Approve</button><button className="btn-secondary py-1 text-xs" onClick={() => reportAction.mutate({ id: row.original._id, action: 'send_back', targetType: 'trip' })}>Send Back</button></div> }
+      {
+        header: 'Actions',
+        cell: ({ row }) => {
+          const waitingForRole = isFinance ? ['PENDING_FINANCE', 'PENDING_CFO'] : ['PENDING_MANAGER', 'submitted'];
+          if (!waitingForRole.includes(row.original.status)) return <span className="text-xs font-medium text-slate-400">No action</span>;
+          return (
+            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+              <button className="btn-secondary py-1 text-xs" onClick={() => reportAction.mutate({ id: row.original._id, action: isFinance ? 'verify' : 'approve', targetType: 'trip' })}>{isFinance ? 'Verify' : 'Approve'}</button>
+              <button className="btn-secondary py-1 text-xs" onClick={() => reportAction.mutate({ id: row.original._id, action: 'send_back', targetType: 'trip' })}>Send Back</button>
+              <button className="btn-secondary py-1 text-xs text-rose-600" onClick={() => reportAction.mutate({ id: row.original._id, action: 'reject', targetType: 'trip' })}>Reject</button>
+            </div>
+          );
+        }
+      }
     ];
     return [
       { header: 'Employee', accessorKey: 'employee', cell: ({ row }) => row.original.employeeId?.name || '-' },
       { header: 'Category', accessorKey: 'category' },
       { header: 'Merchant / Name', accessorKey: 'merchant', cell: ({ row }) => row.original.merchant || row.original.name || row.original.title || row.original.message || '-' },
       { header: 'Amount', accessorKey: 'amount', cell: ({ row }) => row.original.amount ? money(row.original.amount, row.original.currency) : '-' },
-      { header: 'Status', accessorKey: 'status', cell: ({ row }) => <StatusBadge status={row.original.status || (row.original.read ? 'read' : 'pending')} /> }
+      { header: 'Status', accessorKey: 'status', cell: ({ row }) => <StatusBadge status={row.original.status || (row.original.readAt ? 'read' : 'pending')} /> }
     ];
   })();
 
   const columnsWithCheckboxes = useMemo(() => {
-    if (activeTab !== 'bulk') return columns;
-    return [
-      {
-        header: (
-          <input
-            type="checkbox"
-            checked={filteredRecords.length > 0 && selectedIds.length === filteredRecords.length}
-            onChange={(e) => {
-              if (e.target.checked) {
-                setSelectedIds(filteredRecords.map((r) => r._id));
-              } else {
-                setSelectedIds([]);
-              }
-            }}
-            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-          />
-        ),
-        accessorKey: 'checkbox',
-        cell: ({ row }) => (
-          <input
-            type="checkbox"
-            checked={selectedIds.includes(row.original._id)}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              const id = row.original._id;
-              if (e.target.checked) {
-                setSelectedIds((prev) => [...prev, id]);
-              } else {
-                setSelectedIds((prev) => prev.filter((item) => item !== id));
-              }
-            }}
-            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-          />
-        )
-      },
-      ...columns
-    ];
+    if (activeTab === 'bulk') {
+      return [
+        {
+          header: (
+            <input
+              type="checkbox"
+              checked={filteredRecords.length > 0 && selectedIds.length === filteredRecords.length}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedIds(filteredRecords.map((r) => r._id));
+                } else {
+                  setSelectedIds([]);
+                }
+              }}
+              className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+          ),
+          accessorKey: 'checkbox',
+          cell: ({ row }) => (
+            <input
+              type="checkbox"
+              checked={selectedIds.includes(row.original._id)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const id = row.original._id;
+                if (e.target.checked) {
+                  setSelectedIds((prev) => [...prev, id]);
+                } else {
+                  setSelectedIds((prev) => prev.filter((item) => item !== id));
+                }
+              }}
+              className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+          )
+        },
+        ...columns
+      ];
+    }
+    return columns;
   }, [columns, activeTab, selectedIds, filteredRecords]);
 
   const handleRowClick = (record) => {
-    setSelectedRecord(record);
-    setIsDrawerOpen(true);
-    setActionNote('');
+    if (type === 'notifications' || record.category && !record._id) {
+      const target = record.actionUrl || (record.data?.expenseId ? `/expenses/${record.data.expenseId}` : null);
+      if (target) {
+        navigate(target);
+        return;
+      }
+    }
+    const isExpense = type === 'teamExpenses' || type === 'verification' || record.kind === 'expense' || (record.category && !record.title);
+    if (isExpense && record._id) {
+      navigate(`/expenses/${record._id}`);
+    } else {
+      setSelectedRecord(record);
+      setIsDrawerOpen(true);
+      setActionNote('');
+    }
   };
 
   const tabsMap = {
@@ -778,7 +821,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-xs text-slate-400 block">Employee</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || 'Jane Doe'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || '-'}</span>
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Category</span>
@@ -786,7 +829,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Merchant</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.merchant || 'Acme Corp'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.merchant || '-'}</span>
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Expense Date</span>
@@ -864,7 +907,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
               <div className="text-center mb-4 text-[10px] text-slate-400">ID: {selectedRecord._id}</div>
               <div className="border-b border-dashed border-slate-300 dark:border-slate-700 my-2"></div>
               <div className="flex justify-between my-1"><span>Category:</span><span>{selectedRecord.category}</span></div>
-              <div className="flex justify-between my-1"><span>Merchant:</span><span>{selectedRecord.merchant || 'Acme Corp'}</span></div>
+              <div className="flex justify-between my-1"><span>Merchant:</span><span>{selectedRecord.merchant || '-'}</span></div>
               <div className="flex justify-between my-1"><span>Payment:</span><span>{selectedRecord.paymentMode || 'card'}</span></div>
               <div className="border-b border-dashed border-slate-300 dark:border-slate-700 my-2"></div>
               <div className="flex justify-between font-bold text-sm my-1"><span>TOTAL:</span><span>{money(selectedRecord.amount || selectedRecord.totalAmount, selectedRecord.currency)}</span></div>
@@ -959,7 +1002,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Employee</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || 'Jane Doe'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || '-'}</span>
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Department</span>
@@ -1072,11 +1115,11 @@ export const WorkflowTablePage = ({ panel, type }) => {
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Trip Purpose</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.purpose || 'Client Visit'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.purpose || '-'}</span>
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Employee</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || 'Jane Doe'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || '-'}</span>
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Trip Number</span>
@@ -1200,7 +1243,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Employee</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || 'John Doe'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || '-'}</span>
             </div>
           </div>
           
@@ -1245,7 +1288,7 @@ export const WorkflowTablePage = ({ panel, type }) => {
             </div>
             <div>
               <span className="text-xs text-slate-400 block">Employee</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || 'Jane Doe'}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRecord.employeeId?.name || '-'}</span>
             </div>
             {selectedRecord.reference && (
               <div>

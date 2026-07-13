@@ -1,15 +1,27 @@
 import { Reimbursement } from '../models/Enterprise.js';
 
 export const createReimbursementForExpense = async ({ req, expense, method = 'bank_transfer' }) => {
-  return Reimbursement.create({
-    companyId: req.companyId,
-    employeeId: expense.employeeId?._id || expense.employeeId,
-    amount: expense.convertedAmount || expense.amount,
-    currency: expense.baseCurrency || expense.currency || 'INR',
-    method,
-    status: 'pending',
-    createdBy: req.user?._id
-  });
+  const employeeId = expense.employeeId?._id || expense.employeeId;
+  const amount = expense.convertedAmount || expense.amount;
+  return Reimbursement.findOneAndUpdate(
+    { companyId: req.companyId, expenseId: expense._id, employeeId },
+    {
+      $setOnInsert: {
+        companyId: req.companyId,
+        expenseId: expense._id,
+        employeeId,
+        amount,
+        currency: expense.baseCurrency || expense.currency || 'INR',
+        method,
+        status: 'pending',
+        createdBy: req.user?._id
+      },
+      $set: {
+        updatedBy: req.user?._id
+      }
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
 };
 
 export const markPaymentProcessing = async ({ reimbursement, reference, method }) => {

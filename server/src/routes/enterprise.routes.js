@@ -15,6 +15,6 @@ export const enterpriseRoutes = Router();
 enterpriseRoutes.use(authenticate, enforceTenant);
 enterpriseRoutes.get('/modules', listEnterpriseModules);
 enterpriseRoutes.get('/:module', requireEnterprisePermission('view'), listEnterpriseRecords);
-enterpriseRoutes.post('/:module', requireRoles('company_admin', 'finance', 'super_admin'), requireEnterprisePermission('create'), createEnterpriseRecord);
-enterpriseRoutes.patch('/:module/:id', requireRoles('company_admin', 'finance', 'super_admin'), requireEnterprisePermission('edit'), updateEnterpriseRecord);
+enterpriseRoutes.post('/:module', requireRoles('company_admin', 'finance', 'cfo', 'super_admin'), requireEnterprisePermission('create'), createEnterpriseRecord);
+enterpriseRoutes.patch('/:module/:id', requireRoles('company_admin', 'finance', 'cfo', 'super_admin'), requireEnterprisePermission('edit'), updateEnterpriseRecord);
 enterpriseRoutes.delete('/:module/:id', requireRoles('company_admin', 'super_admin'), requireEnterprisePermission('delete'), deleteEnterpriseRecord);

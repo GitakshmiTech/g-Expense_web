@@ -105,14 +105,20 @@ const expenseReportSchema = new mongoose.Schema(
   {
     ...tenantFields,
     ...auditStamp,
+    reportNo: { type: String },
     title: { type: String, required: true },
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    expenseIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Expense' }],
     expenses: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Expense' }],
     totalAmount: { type: Number, default: 0 },
     currency: { type: String, default: 'INR' },
+    total: {
+      amount: { type: Number, default: 0 },
+      currency: { type: String, default: 'INR' }
+    },
     status: {
       type: String,
-      enum: ['draft', 'submitted', 'manager_approved', 'finance_verified', 'reimbursed', 'closed', 'rejected', 'sent_back'],
+      enum: ['draft', 'submitted', 'manager_approved', 'finance_verified', 'reimbursement_pending', 'reimbursed', 'closed', 'rejected', 'sent_back'],
       default: 'draft'
     },
     submittedAt: Date
@@ -124,6 +130,8 @@ const reimbursementSchema = new mongoose.Schema(
   {
     ...tenantFields,
     ...auditStamp,
+    reimbursementNo: { type: String, required: true, default: () => `RMB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` },
+    expenseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Expense', index: true },
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     reportId: { type: mongoose.Schema.Types.ObjectId, ref: 'ExpenseReport' },
     amount: { type: Number, required: true },
@@ -134,10 +142,19 @@ const reimbursementSchema = new mongoose.Schema(
     retryCount: { type: Number, default: 0 },
     lastAttemptAt: Date,
     status: { type: String, enum: ['pending', 'processing', 'paid', 'failed'], default: 'pending' },
-    paidAt: Date
+    paidAt: Date,
+    isDeleted: { type: Boolean, default: false }
   },
   { timestamps: true }
 );
+
+reimbursementSchema.pre('validate', function ensureReimbursementNumber(next) {
+  if (!this.reimbursementNo) {
+    this.reimbursementNo = `RMB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  }
+  if (this.isDeleted === undefined || this.isDeleted === null) this.isDeleted = false;
+  next();
+});
 
 const taxValidationSchema = new mongoose.Schema(
   {
@@ -253,6 +270,7 @@ approvalSchema.index({ companyId: 1, module: 1, recordId: 1, step: 1 });
 taxValidationSchema.index({ companyId: 1, expenseId: 1 });
 paymentTransactionSchema.index({ companyId: 1, reimbursementId: 1, status: 1 });
 accountingExportSchema.index({ companyId: 1, exportNo: 1 }, { unique: true });
+reimbursementSchema.index({ companyId: 1, expenseId: 1, employeeId: 1 }, { unique: true, sparse: true });
 
 export const Department = mongoose.model('Department', departmentSchema);
 export const Permission = mongoose.model('Permission', permissionSchema);

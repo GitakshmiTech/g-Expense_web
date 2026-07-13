@@ -15,6 +15,7 @@ export const navigation = [
   { key: 'budgets', label: 'Budgets', path: '/budgets', icon: WalletCards },
   { key: 'ocr_receipts', label: 'OCR Receipt Management', path: '/ocr-receipts', icon: ReceiptText },
   { key: 'notifications', label: 'Notifications', path: '/notifications', icon: Bell },
+  { key: 'support', label: 'Help & Support', path: '/support', icon: HelpCircle },
   { key: 'audit_logs', label: 'Audit Logs', path: '/audit-logs', icon: FileSearch },
   { key: 'violation_center', label: 'Violation Center', path: '/violation-center', icon: ShieldCheck },
   { key: 'analytics', label: 'Analytics', path: '/analytics', icon: BarChart3 },
@@ -22,47 +23,49 @@ export const navigation = [
 ];
 
 export const superAdminNavigation = [
-  { label: 'Dashboard', path: '/', icon: Gauge },
-  { label: 'Company', path: '/settings/company', icon: Building2 }
+  { key: 'dashboard', label: 'Dashboard', path: '/', icon: Gauge },
+  { key: 'company', label: 'Company', path: '/settings/company', icon: Building2 }
 ];
 
 export const employeeNavigation = [
-  { label: 'Dashboard', path: '/', icon: Gauge },
-  { label: 'My Expenses', path: '/expenses', icon: CreditCard },
-  { label: 'Expense Reports', path: '/expense-reports', icon: FileText },
-  { label: 'Trips', path: '/travel', icon: Plane },
-  { label: 'Reimbursements', path: '/reimbursements', icon: Landmark },
-  { label: 'My Approvals', path: '/approvals', icon: ClipboardCheck },
-  { label: 'Notifications', path: '/notifications', icon: Bell },
-  { label: 'Profile & Settings', path: '/settings', icon: Settings },
-  { label: 'Help & Support', path: '/support', icon: HelpCircle }
+  { key: 'dashboard', label: 'Dashboard', path: '/', icon: Gauge },
+  { key: 'expenses', label: 'My Expenses', path: '/expenses', icon: CreditCard },
+  { key: 'expense_reports', label: 'Expense Reports', path: '/expense-reports', icon: FileText },
+  { key: 'trips', label: 'Trips', path: '/travel', icon: Plane },
+  { key: 'reimbursements', label: 'Reimbursements', path: '/reimbursements', icon: Landmark },
+  { key: 'approvals', label: 'My Approvals', path: '/approvals', icon: ClipboardCheck },
+  { key: 'notifications', label: 'Notifications', path: '/notifications', icon: Bell },
+  { key: 'settings', label: 'Profile & Settings', path: '/settings', icon: Settings },
+  { key: 'support', label: 'Help & Support', path: '/support', icon: HelpCircle }
 ];
 
 export const managerNavigation = [
-  { label: 'Dashboard', path: '/manager', icon: Gauge },
-  { label: 'Team Expenses', path: '/manager/team-expenses', icon: CreditCard },
-  { label: 'Pending Approvals', path: '/manager/pending-approvals', icon: ClipboardCheck },
-  { label: 'Expense Reports', path: '/manager/expense-reports', icon: FileText },
-  { label: 'Trips', path: '/manager/trips', icon: Plane },
-  { label: 'Budgets', path: '/manager/budgets', icon: WalletCards },
-  { label: 'Policy Violations', path: '/manager/policy-violations', icon: FileSearch },
-  { label: 'Team Analytics', path: '/manager/analytics', icon: BarChart3 },
-  { label: 'Notifications', path: '/manager/notifications', icon: Bell },
-  { label: 'Profile & Settings', path: '/manager/settings', icon: Settings }
+  { key: 'dashboard', label: 'Dashboard', path: '/manager', icon: Gauge },
+  { key: 'team_expenses', label: 'Team Expenses', path: '/manager/team-expenses', icon: CreditCard },
+  { key: 'approvals', label: 'Pending Approvals', path: '/manager/pending-approvals', icon: ClipboardCheck },
+  { key: 'expense_reports', label: 'Expense Reports', path: '/manager/expense-reports', icon: FileText },
+  { key: 'trips', label: 'Trips', path: '/manager/trips', icon: Plane },
+  { key: 'budgets', label: 'Budgets', path: '/manager/budgets', icon: WalletCards },
+  { key: 'violation_center', label: 'Policy Violations', path: '/manager/policy-violations', icon: FileSearch },
+  { key: 'analytics', label: 'Team Analytics', path: '/manager/analytics', icon: BarChart3 },
+  { key: 'notifications', label: 'Notifications', path: '/manager/notifications', icon: Bell },
+  { key: 'support', label: 'Help & Support', path: '/support', icon: HelpCircle },
+  { key: 'settings', label: 'Profile & Settings', path: '/manager/settings', icon: Settings }
 ];
 
 export const financeNavigation = [
-  { label: 'Dashboard', path: '/finance', icon: Gauge },
-  { label: 'Expense Verification', path: '/finance/verification', icon: ClipboardCheck },
-  { label: 'Reimbursements', path: '/finance/reimbursements', icon: Landmark },
-  { label: 'Expense Reports', path: '/finance/expense-reports', icon: FileText },
-  { label: 'Budgets', path: '/finance/budgets', icon: WalletCards },
-  { label: 'Accounting & Exports', path: '/finance/accounting', icon: FileText },
-  { label: 'Audit & Compliance', path: '/finance/audit-compliance', icon: FileSearch },
-  { label: 'Policy Violations', path: '/finance/policy-violations', icon: ShieldCheck },
-  { label: 'Analytics & Reports', path: '/finance/analytics', icon: BarChart3 },
-  { label: 'Notifications', path: '/finance/notifications', icon: Bell },
-  { label: 'Profile & Settings', path: '/finance/settings', icon: Settings }
+  { key: 'dashboard', label: 'Dashboard', path: '/finance', icon: Gauge },
+  { key: 'verification', label: 'Expense Verification', path: '/finance/verification', icon: ClipboardCheck },
+  { key: 'reimbursements', label: 'Reimbursements', path: '/finance/reimbursements', icon: Landmark },
+  { key: 'expense_reports', label: 'Expense Reports', path: '/finance/expense-reports', icon: FileText },
+  { key: 'budgets', label: 'Budgets', path: '/finance/budgets', icon: WalletCards },
+  { key: 'accounting', label: 'Accounting & Exports', path: '/finance/accounting', icon: FileText },
+  { key: 'audit_logs', label: 'Audit & Compliance', path: '/finance/audit-compliance', icon: FileSearch },
+  { key: 'violation_center', label: 'Policy Violations', path: '/finance/policy-violations', icon: ShieldCheck },
+  { key: 'analytics', label: 'Analytics & Reports', path: '/finance/analytics', icon: BarChart3 },
+  { key: 'notifications', label: 'Notifications', path: '/finance/notifications', icon: Bell },
+  { key: 'support', label: 'Help & Support', path: '/support', icon: HelpCircle },
+  { key: 'settings', label: 'Profile & Settings', path: '/finance/settings', icon: Settings }
 ];
 
 export const expenseCategories = ['Meals', 'Travel', 'Hotel', 'Fuel', 'Software', 'Office Supplies', 'Telecom', 'Training'];

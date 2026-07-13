@@ -2,6 +2,7 @@ import { writeAudit } from '../audit/audit.service.js';
 import { asyncHandler } from '../helpers/asyncHandler.js';
 import { ApiError } from '../helpers/apiError.js';
 import { tenantFilter } from '../middleware/tenant.middleware.js';
+import { notifyRole } from '../notification/notification.service.js';
 import { EnterpriseService, moduleRegistry } from '../services/enterprise.service.js';
 
 const makeService = (req) => {
@@ -23,9 +24,13 @@ export const listEnterpriseRecords = asyncHandler(async (req, res) => {
   const service = makeService(req);
   const filter = { ...tenantFilter(req) };
   const personalModules = ['reimbursements', 'expense_reports', 'trips', 'budgets'];
-  const isPrivileged = ['company_admin', 'super_admin', 'finance', 'cfo'].includes(req.user.role);
-  if (personalModules.includes(req.params.module) && !isPrivileged) {
+  if (req.params.module === 'reimbursements') {
     filter.employeeId = req.user._id;
+  } else {
+    const isPrivileged = ['company_admin', 'super_admin', 'finance', 'cfo'].includes(req.user.role);
+    if (personalModules.includes(req.params.module) && !isPrivileged) {
+      filter.employeeId = req.user._id;
+    }
   }
   res.json(await service.list(filter, req.query));
 });
@@ -40,6 +45,19 @@ export const createEnterpriseRecord = asyncHandler(async (req, res) => {
     entityId: record._id.toString(),
     after: record.toObject()
   });
+  if (req.params.module === 'expense_categories') {
+    await notifyRole({
+      companyId: req.companyId,
+      roles: ['company_admin', 'finance', 'cfo'],
+      excludeUserIds: [req.user?._id],
+      title: 'Expense category created',
+      message: `${req.user?.name || 'Admin'} created category "${record.name}" (${record.code}).`,
+      category: 'policy',
+      priority: 'normal',
+      actionUrl: '/expense-categories',
+      data: { kind: 'expense_category', categoryId: record._id, code: record.code, action: 'created' }
+    });
+  }
   res.status(201).json(record);
 });
 
@@ -54,6 +72,19 @@ export const updateEnterpriseRecord = asyncHandler(async (req, res) => {
     entityId: req.params.id,
     after: record.toObject()
   });
+  if (req.params.module === 'expense_categories') {
+    await notifyRole({
+      companyId: req.companyId,
+      roles: ['company_admin', 'finance', 'cfo'],
+      excludeUserIds: [req.user?._id],
+      title: 'Expense category updated',
+      message: `${req.user?.name || 'Admin'} updated category "${record.name}" (${record.code}).`,
+      category: 'policy',
+      priority: 'normal',
+      actionUrl: '/expense-categories',
+      data: { kind: 'expense_category', categoryId: record._id, code: record.code, action: 'updated' }
+    });
+  }
   res.json(record);
 });
 

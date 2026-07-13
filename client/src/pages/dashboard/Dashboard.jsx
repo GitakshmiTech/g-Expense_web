@@ -21,7 +21,12 @@ export const Dashboard = () => {
   
   const { data: analytics } = useQuery({ queryKey: ['analytics'], queryFn: api.analytics, enabled: userMode !== 'employee' });
   const { data: expenses = [] } = useQuery({ queryKey: ['expenses'], queryFn: () => api.expenses({}) });
-  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: api.users, enabled: userMode !== 'employee' });
+  const shouldUseFullUserList = ['company_admin', 'super_admin'].includes(userMode);
+  const { data: users = [] } = useQuery({
+    queryKey: [shouldUseFullUserList ? 'users' : 'userDirectory'],
+    queryFn: shouldUseFullUserList ? api.users : api.userDirectory,
+    enabled: userMode !== 'employee'
+  });
   const { data: budgets = [] } = useQuery({ queryKey: ['budgets'], queryFn: api.budgets, enabled: userMode !== 'employee' });
   const { data: companies = [] } = useQuery({ queryKey: ['companies'], queryFn: api.companies, enabled: userMode === 'super_admin' });
   
@@ -107,7 +112,7 @@ export const Dashboard = () => {
                     <div className="h-2 w-2 rounded-full bg-brand-600 mt-1.5 shrink-0" />
                     <div className="flex-1">
                       <p className="text-slate-800 dark:text-slate-200">
-                        Expense of <b>{money(act.amount)}</b> for <b>{act.category}</b> at {act.merchant || 'Acme'} was <span className="font-semibold capitalize text-brand-600">{act.action}</span>.
+                        Expense of <b>{money(act.amount)}</b> for <b>{act.category}</b>{act.merchant ? <> at {act.merchant}</> : null} was <span className="font-semibold capitalize text-brand-600">{act.action}</span>.
                       </p>
                       {act.note && <p className="text-xs text-slate-400 mt-0.5">Note: "{act.note}"</p>}
                       <span className="text-[10px] text-slate-400 block mt-1">{act.at.toLocaleString()}</span>

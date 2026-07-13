@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import { v4 as uuid } from 'uuid';
 import { env } from '../config/env.js';
 import { ApiError } from '../helpers/apiError.js';
@@ -8,6 +9,7 @@ import { asyncHandler } from '../helpers/asyncHandler.js';
 import { signAccessToken, signRefreshToken } from '../helpers/tokens.js';
 import { writeAudit } from '../audit/audit.service.js';
 import { sendEmail } from '../services/email.service.js';
+import { Company } from '../models/Company.js';
 import { User } from '../models/User.js';
 
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -75,6 +77,20 @@ export const resetPassword = asyncHandler(async (req, res) => {
   res.json({ message: 'Password reset complete' });
 });
 
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) throw new ApiError(400, 'Current password and new password are required');
+  if (String(newPassword).length < 8) throw new ApiError(400, 'New password must be at least 8 characters');
+
+  const user = await User.findById(req.user._id).select('+password');
+  if (!user || !(await user.comparePassword(currentPassword))) throw new ApiError(400, 'Current password is incorrect');
+
+  user.password = newPassword;
+  await user.save();
+  await writeAudit({ req, action: 'auth.password_change', entity: 'User', entityId: user._id.toString() });
+  res.json({ message: 'Password changed successfully' });
+});
+
 export const requestOtp = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email: req.body.email });
   if (!user) throw new ApiError(404, 'User not found');
@@ -113,3 +129,5 @@ const sanitizeUser = (user) => ({
   department: user.department,
   designation: user.designation
 });
+
+

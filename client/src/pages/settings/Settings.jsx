@@ -1,18 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { UserCircle, Landmark, Bell, ShieldCheck, History, Save, ShieldAlert } from 'lucide-react';
-import { useState } from 'react';
+import { UserCircle, Landmark, Bell, ShieldCheck, History, Save, Store, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable } from '../../components/tables/DataTable';
+import { useToast } from '../../contexts/ToastContext';
+import { useEffectiveAccess } from '../../hooks/usePermissions';
 import { setCredentials } from '../../redux/authSlice';
 import { api } from '../../services/platform.service';
 
 export const Settings = () => {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
+  const toast = useToast();
   
   const user = useSelector((state) => state.auth.user);
   const accessToken = useSelector((state) => state.auth.accessToken);
+  const access = useEffectiveAccess();
+  const userId = user?._id || user?.id;
+  const canViewAudit = access.isUnrestricted || Boolean(access.permissions?.audit_logs?.view || access.permissions?.audit_logs?.manage);
 
   const [activeTab, setActiveTab] = useState('profile');
   const [successMessage, setSuccessMessage] = useState('');
@@ -38,25 +44,66 @@ export const Settings = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  const tabs = useMemo(() => [
+    { id: 'profile', label: 'My Profile', icon: UserCircle },
+    { id: 'bank', label: 'Bank Details', icon: Landmark },
+    { id: 'security', label: 'Security & Password', icon: ShieldCheck },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'vendors', label: 'Synced Vendors', icon: Store },
+    ...(canViewAudit ? [{ id: 'audit', label: 'Activity Audit Log', icon: History }] : [])
+  ], [canViewAudit]);
+
+  useEffect(() => {
+    if (activeTab === 'audit' && !canViewAudit) setActiveTab('profile');
+  }, [activeTab, canViewAudit]);
+
   // Audit Logs Query
   const { data: auditLogs = [] } = useQuery({ 
     queryKey: ['audit'], 
     queryFn: api.audit, 
     retry: false,
-    enabled: activeTab === 'audit'
+    enabled: activeTab === 'audit' && canViewAudit
   });
+
+  const {
+    data: vendorSyncData = { vendors: [] },
+    isFetching: vendorsLoading,
+    refetch: refreshVendors
+  } = useQuery({
+    queryKey: ['integrationVendors'],
+    queryFn: () => api.integrationVendors(),
+    retry: false,
+    enabled: activeTab === 'vendors'
+  });
+
+  const integrationVendors = vendorSyncData.vendors || [];
 
   // Profile Update Mutation
   const updateProfile = useMutation({
-    mutationFn: (payload) => api.updateUser(user._id, payload),
+    mutationFn: (payload) => api.updateUser(userId, payload),
     onSuccess: (data) => {
-      dispatch(setCredentials({ user: data, accessToken }));
+      dispatch(setCredentials({ user: { ...user, ...data }, accessToken }));
       setSuccessMessage('Settings updated successfully!');
       setTimeout(() => setSuccessMessage(''), 3000);
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['userDirectory'] });
     },
     onError: (err) => {
-      alert(err.response?.data?.message || 'Failed to update profile settings');
+      toast.error(err.response?.data?.message || 'Failed to update profile settings');
+    }
+  });
+
+  const changePassword = useMutation({
+    mutationFn: (payload) => api.changePassword(userId, payload),
+    onSuccess: () => {
+      setSuccessMessage('Password changed successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || 'Failed to update password');
     }
   });
 
@@ -94,15 +141,10 @@ export const Settings = () => {
   const handleUpdatePassword = (e) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      alert('New passwords do not match');
+      toast.error('New passwords do not match');
       return;
     }
-    // Simulated Password Change API
-    setSuccessMessage('Password changed successfully (mock)!');
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setTimeout(() => setSuccessMessage(''), 3000);
+    changePassword.mutate({ currentPassword, newPassword });
   };
 
   return (
@@ -121,13 +163,7 @@ export const Settings = () => {
       <div className="grid gap-6 md:grid-cols-[240px_1fr] mt-2">
         {/* Settings Navigation Panel */}
         <aside className="panel rounded-2xl p-3 flex flex-col space-y-1 h-fit">
-          {[
-            { id: 'profile', label: 'My Profile', icon: UserCircle },
-            { id: 'bank', label: 'Bank Details', icon: Landmark },
-            { id: 'security', label: 'Security & Password', icon: ShieldCheck },
-            { id: 'notifications', label: 'Notifications', icon: Bell },
-            { id: 'audit', label: 'Activity Audit Log', icon: History }
-          ].map((tab) => {
+          {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
@@ -249,7 +285,7 @@ export const Settings = () => {
                   </div>
                 </div>
                 <div className="pt-2">
-                  <button type="submit" className="btn-primary flex items-center gap-2">
+                  <button type="submit" className="btn-primary flex items-center gap-2" disabled={changePassword.isPending}>
                     <Save className="h-4 w-4" /> Update Password
                   </button>
                 </div>
@@ -318,7 +354,51 @@ export const Settings = () => {
             </div>
           )}
 
-          {/* TAB 5: AUDIT LOG */}
+          {/* TAB 5: SYNCED VENDORS */}
+          {activeTab === 'vendors' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">Synced Asset Vendors</h3>
+                  <p className="text-xs text-slate-500">Vendors created from Asset purchase orders appear here automatically.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:bg-slate-900 dark:text-brand-100">
+                    {integrationVendors.length} synced
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => refreshVendors()}
+                    className="btn-secondary flex items-center gap-2 px-3 py-2 text-xs"
+                    disabled={vendorsLoading}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${vendorsLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {vendorsLoading ? (
+                <div className="rounded-xl border border-slate-200 p-5 text-sm text-slate-500 dark:border-slate-800">
+                  Loading synced vendors...
+                </div>
+              ) : (
+                <DataTable
+                  data={integrationVendors}
+                  columns={[
+                    { header: 'Vendor', accessorKey: 'name' },
+                    { header: 'Contact Person', accessorKey: 'contactPerson' },
+                    { header: 'Email', accessorKey: 'email' },
+                    { header: 'Phone', accessorKey: 'phone' },
+                    { header: 'Category', accessorKey: 'category' },
+                    { header: 'Synced At', accessorFn: (row) => row.updatedAt ? new Date(row.updatedAt).toLocaleString('en-IN') : '-' }
+                  ]}
+                />
+              )}
+            </div>
+          )}
+
+          {/* TAB 6: AUDIT LOG */}
           {activeTab === 'audit' && (
             <div className="space-y-4">
               <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Audit Action Trail</h3>

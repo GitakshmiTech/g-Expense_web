@@ -55,7 +55,7 @@ const vendorCategoryMap = [
 
 const money = (amount, currency = 'INR') => `${currency === 'INR' ? '₹' : currency} ${Number(amount || 0).toLocaleString('en-IN')}`;
 const formatFileSize = (size = 0) => size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
-const isTrustedOcr = (ocr) => ocr?.provider === 'gemini' && Number(ocr.confidence || 0) >= 0.45;
+const isTrustedOcr = (ocr) => ocr?.provider === 'gemini' || Number(ocr.confidence || 0) >= 0.45;
 
 const categoryFromOcr = (ocr, merchant = '') => {
   if (ocr?.category && expenseCategories.includes(ocr.category)) return ocr.category;
@@ -134,6 +134,7 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
   const [splitType, setSplitType] = useState('equal');
   const [splitValues, setSplitValues] = useState({});
   const [reimbursementMode, setReimbursementMode] = useState('creator_full');
+  const [customFields, setCustomFields] = useState({});
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
   const submitIntentRef = useRef('submit');
@@ -148,6 +149,12 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
     queryKey: ['travel-requests-for-expense'],
     queryFn: api.travelRequests,
     staleTime: 60_000
+  });
+
+  const { data: categoryCatalog = [] } = useQuery({
+    queryKey: ['expense-category-catalog'],
+    queryFn: api.expenseCategoryCatalog,
+    staleTime: 120_000
   });
 
   const { register, handleSubmit, formState: { errors }, setValue, watch, trigger } = useForm({
@@ -167,25 +174,40 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
 
   const watched = watch();
   const primaryReceipt = receiptFiles[0];
+  const configuredCategories = useMemo(() => {
+    const active = categoryCatalog.filter((category) => category.active !== false);
+    if (active.length) return active;
+    return expenseCategories.map((name) => ({ name, code: name, active: true, dynamicFields: [] }));
+  }, [categoryCatalog]);
+  const selectedCategoryConfig = useMemo(() => configuredCategories.find((category) => category.name === watched.category || category.code === watched.category), [configuredCategories, watched.category]);
+  const selectedDynamicFields = useMemo(() => (Array.isArray(selectedCategoryConfig?.dynamicFields) ? selectedCategoryConfig.dynamicFields : []), [selectedCategoryConfig]);
   const departments = useMemo(() => [...new Set(users.map((user) => user.department).filter(Boolean))], [users]);
   const selectedParticipants = useMemo(() => users.filter((user) => participantIds.includes(user._id)), [participantIds, users]);
 
   const categorySuggestion = useMemo(() => {
     const merchant = String(watched.merchant || '').toLowerCase();
-    return vendorCategoryMap.find((item) => item.match.some((vendor) => merchant.includes(vendor)));
-  }, [watched.merchant]);
+    const suggestion = vendorCategoryMap.find((item) => item.match.some((vendor) => merchant.includes(vendor)));
+    if (!suggestion) return null;
+    return configuredCategories.some((category) => category.name === suggestion.category) ? suggestion : null;
+  }, [configuredCategories, watched.merchant]);
 
   const policyAlerts = useMemo(() => {
     const amount = Number(watched.amount || 0);
     const category = watched.category;
     const day = watched.expenseDate ? new Date(watched.expenseDate).getDay() : null;
     const alerts = [];
+    const categoryLimit = Number(selectedCategoryConfig?.limits?.perExpense || selectedCategoryConfig?.defaultLimit?.amount || 0);
+    const receiptAbove = Number(selectedCategoryConfig?.receiptMandatoryAbove || 0);
+    const receiptRequired = selectedCategoryConfig?.compliance?.receiptMandatory || (receiptAbove > 0 && amount > receiptAbove);
+    if (categoryLimit > 0 && amount > categoryLimit) alerts.push({ code: 'Category limit exceeded', detail: `Allowed: ${money(categoryLimit, watched.currency)} · Entered: ${money(amount, watched.currency)}`, severity: 'warning' });
+    if (receiptRequired && !primaryReceipt) alerts.push({ code: `Receipt required${receiptAbove ? ` above ${money(receiptAbove, watched.currency)}` : ''}`, detail: 'Attach a receipt before final submission.', severity: 'warning' });
+    if (selectedCategoryConfig?.compliance?.gstMandatory && !Number(watched.taxAmount || 0)) alerts.push({ code: 'GST details required', detail: 'Enter tax amount/GST details for this category.', severity: 'warning' });
     if (category === 'Lodging' && amount > 5000) alerts.push({ code: 'Hotel limit exceeded', detail: `Allowed: ₹5000 · Entered: ${money(amount, watched.currency)}`, severity: 'warning' });
     if (amount > 1000 && !primaryReceipt) alerts.push({ code: 'Receipt required above ₹1000', detail: 'Attach a receipt before final submission.', severity: 'warning' });
     if ((day === 0 || day === 6) && !advanced.managerNote) alerts.push({ code: 'Weekend expense requires manager note', detail: 'Add context for weekend business spend.', severity: 'notice' });
     if (category === 'Travel' && !advanced.tripId) alerts.push({ code: 'Travel expense can be linked to a trip', detail: 'Linking improves approval and reimbursement context.', severity: 'notice' });
     return alerts;
-  }, [advanced.managerNote, advanced.tripId, primaryReceipt, watched.amount, watched.category, watched.currency, watched.expenseDate]);
+  }, [advanced.managerNote, advanced.tripId, primaryReceipt, selectedCategoryConfig, watched.amount, watched.category, watched.currency, watched.expenseDate, watched.taxAmount]);
 
   const fraudWarnings = useMemo(() => {
     const warnings = [];
@@ -255,12 +277,25 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      const snapshot = { watched, advanced, notes, isSharedExpense, participantIds, splitType, splitValues, reimbursementMode };
+      const snapshot = { watched, advanced, notes, isSharedExpense, participantIds, splitType, splitValues, reimbursementMode, customFields };
       localStorage.setItem('gt_expense_create_draft', JSON.stringify(snapshot));
       setSaveState(`Draft auto-saved at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
     }, 2500);
     return () => clearTimeout(timeout);
-  }, [advanced, isSharedExpense, notes, participantIds, reimbursementMode, splitType, splitValues, watched]);
+  }, [advanced, customFields, isSharedExpense, notes, participantIds, reimbursementMode, splitType, splitValues, watched]);
+
+  useEffect(() => {
+    if (configuredCategories.length && !configuredCategories.some((category) => category.name === watched.category || category.code === watched.category)) {
+      setValue('category', configuredCategories[0].name);
+    }
+  }, [configuredCategories, setValue, watched.category]);
+
+  useEffect(() => {
+    setCustomFields((current) => {
+      const allowed = new Set(selectedDynamicFields.map((field) => field.fieldId));
+      return Object.fromEntries(Object.entries(current).filter(([key]) => allowed.has(key)));
+    });
+  }, [selectedDynamicFields]);
 
   useEffect(() => {
     return () => receiptFiles.forEach((file) => file.previewUrl && URL.revokeObjectURL(file.previewUrl));
@@ -289,7 +324,11 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
         setOcrData(ocr);
         const trusted = isTrustedOcr(ocr);
         if (!trusted) {
-          setFileError(ocr.warnings?.[0] || 'AI OCR could not confidently read this receipt. Please enter bill details manually.');
+          const warning = ocr.warnings?.[0] || '';
+          const isQuotaOrApiKeyError = warning.toLowerCase().includes('quota') || warning.toLowerCase().includes('limit') || warning.toLowerCase().includes('gemini') || warning.toLowerCase().includes('api key');
+          if (!isQuotaOrApiKeyError) {
+            setFileError(warning || 'AI OCR could not confidently read this receipt. Please enter bill details manually.');
+          }
           return { file: result.file, ocr };
         }
         if (Number(ocr.amount) > 0) setValue('amount', Number(ocr.amount));
@@ -298,7 +337,7 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
           setAdvanced((current) => ({ ...current, title: current.title || `${ocr.merchant} Expense` }));
         }
         const suggestedCategory = categoryFromOcr(ocr);
-        if (suggestedCategory) setValue('category', suggestedCategory);
+        if (suggestedCategory && configuredCategories.some((category) => category.name === suggestedCategory)) setValue('category', suggestedCategory);
         const paymentMode = paymentModeFromOcr(ocr.paymentMode);
         if (paymentMode) setValue('paymentMode', paymentMode);
         if (ocr.currency) setValue('currency', ocr.currency);
@@ -317,7 +356,11 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
     } catch (err) {
       console.error('OCR failed:', err);
       setReceiptFiles((current) => current.map((item) => item.id === receiptId ? { ...item, progress: 100, status: 'OCR failed' } : item));
-      setFileError(err.response?.data?.message || 'OCR scan failed. You can continue manually.');
+      const errMsg = err.response?.data?.message || err.message || '';
+      const isQuotaOrApiKeyError = errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('limit') || errMsg.toLowerCase().includes('gemini') || errMsg.toLowerCase().includes('api key');
+      if (!isQuotaOrApiKeyError) {
+        setFileError(errMsg || 'OCR scan failed. You can continue manually.');
+      }
       return null;
     } finally {
       clearInterval(stageTimer);
@@ -382,6 +425,8 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
   const handleContinueToReview = async () => {
     const isValid = await trigger(['category', 'merchant', 'expenseDate', 'amount', 'currency', 'paymentMode', 'taxAmount', 'gstNumber', 'description']);
     if (isSharedExpense && (!participantIds.length || !splitPreview.valid)) return;
+    const missingRequiredField = selectedDynamicFields.some((field) => field.isRequired && !String(customFields[field.fieldId] || '').trim());
+    if (missingRequiredField) return;
     if (isValid) setStep(2);
   };
 
@@ -394,7 +439,8 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
       amount: Number(values.amount),
       taxAmount: values.taxAmount ? Number(values.taxAmount) : 0,
       description: descriptionParts.filter(Boolean).join('\n\n'),
-      status: values.status || 'draft'
+      status: values.status || 'draft',
+      customFields
     };
     if (watched.category === 'Travel' && advanced.tripId) payload.tripId = advanced.tripId;
     if (watched.category === 'Mileage' && advanced.distance) payload.mileage = { distance: Number(advanced.distance), unit: 'km', rate: 12 };
@@ -566,7 +612,13 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
                 {isTrustedOcr(ocrData) ? <Sparkles className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
                 {isTrustedOcr(ocrData) ? 'OCR extracted data with confidence' : 'OCR needs manual verification'}
               </p>
-              {!isTrustedOcr(ocrData) && <p className="mb-3 text-sm text-amber-800 dark:text-amber-200">{ocrData.warnings?.[0] || 'Receipt text was not clear enough to auto-fill safely.'}</p>}
+              {!isTrustedOcr(ocrData) && (
+                <p className="mb-3 text-sm text-amber-800 dark:text-amber-200">
+                  {ocrData.warnings?.[0] && !(ocrData.warnings[0].toLowerCase().includes('quota') || ocrData.warnings[0].toLowerCase().includes('limit') || ocrData.warnings[0].toLowerCase().includes('gemini'))
+                    ? ocrData.warnings[0]
+                    : 'Receipt text was not clear enough to auto-fill safely.'}
+                </p>
+              )}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {[
                   ['Merchant', ocrData.merchant, ocrData.confidence],
@@ -618,8 +670,9 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Expense Category <span className="text-rose-500">*</span></label>
             <select className="input" {...register('category')}>
-              {expenseCategories.map((item) => <option key={item}>{item}</option>)}
+              {configuredCategories.map((item) => <option key={item._id || item.code || item.name} value={item.name}>{item.name}</option>)}
             </select>
+            {selectedCategoryConfig?.code && <p className="mt-1 text-xs text-slate-400">{selectedCategoryConfig.code}{selectedCategoryConfig.glCode ? ` · GL ${selectedCategoryConfig.glCode}` : ''}</p>}
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Amount <span className="text-rose-500">*</span></label>
@@ -655,7 +708,7 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
           {[
             ['costCenter', 'Cost Center', 'CC-1042'],
             ['projectCode', 'Project Code', 'PRJ-MUM-24'],
-            ['clientName', 'Client Name', 'Acme Corp'],
+            ['clientName', 'Client Name', 'Client name'],
             ['department', 'Department', 'Sales'],
             ['billNumber', 'Bill Number', 'INV-2026-001'],
             ['location', 'Expense Location', 'Mumbai']
@@ -695,12 +748,38 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
                 {watched.category === 'Travel' && (
                   <select className="input" value={advanced.tripId} onChange={(event) => setAdvancedField('tripId', event.target.value)}>
                     <option value="">Link to trip</option>
-                    {trips.map((trip) => <option key={trip._id} value={trip._id}>{trip.title || trip.purpose || trip.destination || 'Client Visit Mumbai'}</option>)}
+                    {trips.map((trip) => <option key={trip._id} value={trip._id}>{trip.title || trip.purpose || trip.destination || 'Untitled trip'}</option>)}
                   </select>
                 )}
                 {watched.category === 'Mileage' && <input className="input" type="number" value={advanced.distance} onChange={(event) => setAdvancedField('distance', event.target.value)} placeholder="Distance in km" />}
                 {watched.category === 'Meals' && <input className="input" value={advanced.attendeeText} onChange={(event) => setAdvancedField('attendeeText', event.target.value)} placeholder="Attendees for client meeting" />}
                 <input className="input" value={advanced.managerNote} onChange={(event) => setAdvancedField('managerNote', event.target.value)} placeholder="Manager note for exception or weekend spend" />
+              </div>
+            </div>
+          )}
+
+          {selectedDynamicFields.length > 0 && (
+            <div className="md:col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 dark:border-indigo-900 dark:bg-indigo-950/20">
+              <p className="mb-3 flex items-center gap-2 text-sm font-bold text-indigo-800 dark:text-indigo-200"><Layers3 className="h-4 w-4" /> Category required fields</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {selectedDynamicFields.map((field) => {
+                  const value = customFields[field.fieldId] || '';
+                  const requiredMissing = field.isRequired && !String(value).trim();
+                  const type = field.type === 'NUMBER' ? 'number' : field.type === 'DATE' ? 'date' : 'text';
+                  return (
+                    <label key={field.fieldId} className="grid gap-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                      <span>{field.label}{field.isRequired && <span className="text-rose-500"> *</span>}</span>
+                      <input
+                        className={`input ${requiredMissing ? 'border-rose-300 focus:border-rose-500' : ''}`}
+                        type={type}
+                        value={value}
+                        onChange={(event) => setCustomFields((current) => ({ ...current, [field.fieldId]: event.target.value }))}
+                        placeholder={field.placeholder || field.label}
+                      />
+                      {requiredMissing && <span className="text-xs text-rose-600">Required for {watched.category}</span>}
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -13,10 +13,12 @@ import {
 } from '../models/Enterprise.js';
 import { detectFraud } from './fraud.service.js';
 import { enqueueNotification } from '../jobs/queue.js';
+import { TravelRequest } from '../models/ExpenseEcosystem.js';
 
 export const buildFinanceDashboard = async ({ req }) => {
-  const [verificationQueue, reimbursements, failedPayments, taxIssues, fraudQueue, exports] = await Promise.all([
+  const [verificationQueue, travelQueue, reimbursements, failedPayments, taxIssues, fraudQueue, exports] = await Promise.all([
     ExpenseReport.find({ companyId: req.companyId, status: { $in: ['manager_approved', 'submitted'] } }).populate('employeeId', 'name email department').sort({ createdAt: -1 }),
+    TravelRequest.find({ companyId: req.companyId, status: { $in: ['PENDING_FINANCE', 'PENDING_CFO'] } }).populate('employeeId', 'name email department').sort({ createdAt: -1 }),
     Reimbursement.find({ companyId: req.companyId }).populate('employeeId', 'name email department').populate('reportId', 'title status').sort({ createdAt: -1 }),
     PaymentTransaction.find({ companyId: req.companyId, status: 'failed' }).populate('reimbursementId').sort({ createdAt: -1 }),
     TaxValidation.find({ companyId: req.companyId, status: { $in: ['mismatch', 'missing_tax_id'] } }).populate('expenseId').sort({ createdAt: -1 }),
@@ -26,13 +28,16 @@ export const buildFinanceDashboard = async ({ req }) => {
 
   return {
     cards: {
-      verificationQueue: verificationQueue.length,
+      verificationQueue: verificationQueue.length + travelQueue.length,
       pendingReimbursement: reimbursements.filter((item) => ['pending', 'processing'].includes(item.status)).reduce((sum, item) => sum + item.amount, 0),
       failedPayments: failedPayments.length,
       taxIssues: taxIssues.length,
       suspiciousExpenses: fraudQueue.length
     },
-    verificationQueue,
+    verificationQueue: [
+      ...verificationQueue,
+      ...travelQueue.map((trip) => ({ ...trip.toObject(), kind: 'trip', amount: trip.budget?.amount || trip.estimate?.estimatedTotal || 0, currency: trip.budget?.currency || 'INR' }))
+    ],
     reimbursements,
     failedPayments,
     taxIssues,
@@ -44,21 +49,34 @@ export const buildFinanceDashboard = async ({ req }) => {
 export const listExpenseVerification = async ({ req, query }) => {
   const filter = { companyId: req.companyId };
   if (query.status) filter.status = query.status;
-  else filter.status = { $in: ['manager_approved', 'submitted', 'finance_review', 'cfo_review', 'finance_verified', 'sent_back', 'rejected'] };
+  else filter.status = { $in: ['manager_approved', 'submitted', 'PENDING_FINANCE', 'PENDING_ACCOUNTS', 'UNDER_VERIFICATION', 'PAYMENT_PROCESSING', 'finance_review', 'cfo_review', 'finance_verified', 'sent_back', 'rejected'] };
 
-  const [reports, expenses] = await Promise.all([
+  const [reports, expenses, trips] = await Promise.all([
     ExpenseReport.find({ ...filter, status: { $in: ['manager_approved', 'submitted', 'finance_verified', 'sent_back', 'rejected'] } })
       .populate('employeeId', 'name email department')
       .populate('expenses')
       .sort({ createdAt: -1 }),
-    Expense.find({ companyId: req.companyId, status: { $in: ['finance_review', 'cfo_review'] } })
+    Expense.find({ companyId: req.companyId, status: { $in: ['PENDING_FINANCE', 'PENDING_ACCOUNTS', 'UNDER_VERIFICATION', 'PAYMENT_PROCESSING', 'finance_review', 'cfo_review'] } })
       .populate('employeeId', 'name email department')
+      .sort({ createdAt: -1 }),
+    TravelRequest.find({ companyId: req.companyId, status: { $in: ['PENDING_FINANCE', 'PENDING_CFO'] } })
+      .populate('employeeId', 'name email department managerId')
       .sort({ createdAt: -1 })
   ]);
 
   return [
     ...expenses.map((item) => ({ ...item.toObject(), kind: 'expense' })),
-    ...reports.map((item) => ({ ...item.toObject(), kind: 'report' }))
+    ...reports.map((item) => ({ ...item.toObject(), kind: 'report' })),
+    ...trips.map((item) => {
+      const obj = item.toObject();
+      return {
+        ...obj,
+        kind: 'trip',
+        amount: obj.budget?.amount || obj.estimate?.estimatedTotal || 0,
+        estimatedCost: obj.budget?.amount || obj.estimate?.estimatedTotal || 0,
+        currency: obj.budget?.currency || 'INR'
+      };
+    })
   ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 };
 
@@ -132,10 +150,10 @@ export const financeVerifyReport = async ({ req, reportId, action, note }) => {
     await Reimbursement.findOneAndUpdate(
       { companyId: req.companyId, reportId: report._id },
       { companyId: req.companyId, reportId: report._id, employeeId: report.employeeId, amount: report.totalAmount, currency: report.currency, status: 'pending', method: 'bank_transfer', createdBy: req.user._id, updatedBy: req.user._id },
-      { new: true, upsert: true }
+      { new: true, upsert: true, setDefaultsOnInsert: true }
     );
   }
-  await enqueueNotification({ companyId: req.companyId, userId: report.employeeId, title: `Finance ${report.status}`, message: note || `Finance marked report as ${report.status}`, data: { reportId: report._id } });
+  await enqueueNotification({ companyId: req.companyId, userId: report.employeeId, title: `Finance ${report.status}`, message: note || `Finance marked report as ${report.status}`, category: 'approval', data: { kind: 'report', reportId: report._id, status: report.status, actorId: req.user._id } });
   await writeAudit({ req, action: `finance.report.${action}`, entity: 'ExpenseReport', entityId: report._id.toString(), before, after: report.toObject(), metadata: { taxValidations: taxValidations.length } });
   return report;
 };
@@ -174,7 +192,22 @@ export const processReimbursementPayment = async ({ req, id, status, reference, 
   });
   if (status === 'paid' && reimbursement.reportId) {
     await ExpenseReport.findOneAndUpdate({ _id: reimbursement.reportId, companyId: req.companyId }, { status: 'reimbursed', updatedBy: req.user._id });
+    const report = await ExpenseReport.findOne({ _id: reimbursement.reportId, companyId: req.companyId }).select('expenses');
+    if (report?.expenses?.length) {
+      await Expense.updateMany({ _id: { $in: report.expenses }, companyId: req.companyId }, { status: 'REIMBURSED', updatedBy: req.user._id });
+    }
   }
+  if (status === 'paid' && reimbursement.expenseId) {
+    await Expense.findOneAndUpdate({ _id: reimbursement.expenseId, companyId: req.companyId }, { status: 'REIMBURSED', updatedBy: req.user._id });
+  }
+  await enqueueNotification({
+    companyId: req.companyId,
+    userId: reimbursement.employeeId,
+    title: status === 'paid' ? 'Reimbursement paid' : `Payment ${status}`,
+    message: status === 'paid' ? `Your reimbursement of ${reimbursement.amount} ${reimbursement.currency} has been paid.` : `Your reimbursement payment is ${status}.`,
+    category: 'expense',
+    data: { kind: 'reimbursement', reimbursementId: reimbursement._id, status, actorId: req.user._id }
+  });
   await writeAudit({ req, action: `finance.payment.${status}`, entity: 'Reimbursement', entityId: reimbursement._id.toString(), before, after: reimbursement.toObject() });
   return reimbursement;
 };

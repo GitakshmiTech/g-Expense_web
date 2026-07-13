@@ -1,6 +1,16 @@
 import { Department, ExpenseCategory } from '../models/Enterprise.js';
 import { PolicyEngineService } from '../services/policyEngine.service.js';
 
+const roleLimitKeys = (user = {}) => {
+  const role = String(user.role || '').toLowerCase();
+  const grade = String(user.grade || '').toUpperCase();
+  const keys = [user.role, role, grade].filter(Boolean);
+  if (role === 'employee') keys.push('L1_ASSOCIATE');
+  if (role === 'manager') keys.push('L2_MANAGER', 'L2_MGR');
+  if (['finance', 'cfo', 'company_admin', 'super_admin'].includes(role)) keys.push('L3_DIRECTOR', 'L3_DIR');
+  return [...new Set(keys)];
+};
+
 export const evaluateExpensePolicy = async ({ companyId, user, expense, receiptCount }) => {
   // Resolve department ID from user department string
   let departmentId = null;
@@ -87,6 +97,14 @@ export const evaluateExpensePolicy = async ({ companyId, user, expense, receiptC
   });
 
   if (categoryDoc) {
+    if (categoryDoc.active === false) {
+      violations.push({
+        code: 'CATEGORY_INACTIVE',
+        message: `Category ${categoryDoc.name} is inactive and cannot be used for new expenses`,
+        severity: 'block'
+      });
+    }
+
     // 1. Basic / Role Limits Validation
     if (categoryDoc.limits) {
       const perExpenseLimit = categoryDoc.limits.perExpense || categoryDoc.defaultLimit?.amount || 0;
@@ -98,13 +116,13 @@ export const evaluateExpensePolicy = async ({ companyId, user, expense, receiptC
         });
       }
 
-      const userRole = user.role;
-      if (categoryDoc.limits.roleBased && categoryDoc.limits.roleBased[userRole]) {
-        const roleLimit = Number(categoryDoc.limits.roleBased[userRole]);
+      const roleKey = roleLimitKeys(user).find((key) => categoryDoc.limits.roleBased?.[key]);
+      if (roleKey) {
+        const roleLimit = Number(categoryDoc.limits.roleBased[roleKey]);
         if (roleLimit > 0 && expense.amount > roleLimit) {
           violations.push({
             code: 'LIMIT_EXCEEDED',
-            message: `Expense amount exceeds role-based limit of ${roleLimit} for role ${userRole} in category ${categoryDoc.name}`,
+            message: `Expense amount exceeds role-based limit of ${roleLimit} for ${roleKey} in category ${categoryDoc.name}`,
             severity: 'block'
           });
         }

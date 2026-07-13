@@ -1,68 +1,63 @@
-import { useState, useEffect } from 'react';
-import { HelpCircle, ChevronDown, ChevronUp, Plus, Send, LifeBuoy, FileText, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
-import { PageHeader } from '../../components/common/PageHeader';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSelector } from 'react-redux';
+import { CheckCircle2, ChevronDown, ChevronUp, Clock, HelpCircle, LifeBuoy, Plus, Send } from 'lucide-react';
 import { Modal } from '../../components/common/Modal';
+import { PageHeader } from '../../components/common/PageHeader';
+import { api } from '../../services/platform.service';
 
-const FAQS = [
-  {
-    q: 'How do I submit a new business expense?',
-    a: 'Navigate to "Expenses" in the sidebar and click "New Expense". You can upload your bill or receipt to let the Gemini AI OCR automatically scan and fill in the details. Check all values, select whether it is a shared expense, and click "Submit".'
-  },
-  {
-    q: 'Why is my expense marked as "Sent Back"?',
-    a: 'An expense is marked as "Sent Back" if a hard policy violation is detected (e.g. daily limit exceeded, missing required receipt, or duplicates). Review your manager\'s notes in the details drawer, edit the details, and re-submit.'
-  },
-  {
-    q: 'How long does reimbursement processing take?',
-    a: 'Once an expense report is manager-approved and finance-verified, settlements are queued. Typically, payments are disbursed to your registered bank account within 3 to 5 business days.'
-  },
-  {
-    q: 'What is a Shared Expense and how does it work?',
-    a: 'If you paid for a meal or travel expense that included other employees, check "Shared Expense" in the creation form. You can search and add participants, choose to split it equally or by custom percentages/amounts, and specify if you receive the full reimbursement or if everyone receives their own share.'
-  },
-  {
-    q: 'How do I link an expense to a Business Trip?',
-    a: 'Navigate to "Trips", open your active trip, and link the draft expenses to it. Once linked, the travel request budget consumption indicator will update to display the estimated vs. actual travel spending.'
-  }
-];
+const formatDate = (value) => (value ? new Date(value).toLocaleString() : '-');
 
-const INITIAL_TICKETS = [
-  {
-    id: 'TKT-38291',
-    subject: 'Gemini OCR failed to extract GST rate from Uber invoice',
-    category: 'OCR Scanning',
-    severity: 'medium',
-    status: 'resolved',
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toLocaleString(),
-    description: 'Uploaded Uber taxi PDF bill but tax amount was filled as 0 instead of 5%. Please review OCR logs.'
-  },
-  {
-    id: 'TKT-39401',
-    subject: 'Reimbursement status showing Failed on Axis Bank transfer',
-    category: 'Payments',
-    severity: 'high',
-    status: 'in_progress',
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toLocaleString(),
-    description: 'Report RPT-FY26-029 is approved but reimbursement bank transfer shows failed payment reference. Need help updating IFSC.'
-  }
-];
+const statusLabel = (status = '') => status.replaceAll('_', ' ');
 
 export const Support = () => {
+  const queryClient = useQueryClient();
+  const user = useSelector((state) => state.auth.user);
   const [faqOpenIndex, setFaqOpenIndex] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [tickets, setTickets] = useState(() => {
-    const saved = localStorage.getItem('gt_support_tickets');
-    return saved ? JSON.parse(saved) : INITIAL_TICKETS;
-  });
-
-  // Wizard Form state
   const [subject, setSubject] = useState('');
-  const [category, setCategory] = useState('Expense Submission');
+  const [category, setCategory] = useState('');
   const [severity, setSeverity] = useState('low');
   const [description, setDescription] = useState('');
 
+  const canManageTickets = ['manager', 'finance', 'cfo', 'company_admin', 'super_admin'].includes(user?.role);
+
+  const { data: options = {} } = useQuery({ queryKey: ['supportOptions'], queryFn: api.supportOptions });
+  const { data: faqs = [], isLoading: faqsLoading } = useQuery({ queryKey: ['supportFaqs'], queryFn: api.supportFaqs });
+  const { data: tickets = [], isLoading: ticketsLoading } = useQuery({ queryKey: ['supportTickets'], queryFn: api.supportTickets });
+
+  const categoryOptions = options.categories || [];
+  const severityOptions = options.severities || [];
+
   useEffect(() => {
-    localStorage.setItem('gt_support_tickets', JSON.stringify(tickets));
+    if (!category && categoryOptions.length) setCategory(categoryOptions[0]);
+  }, [category, categoryOptions]);
+
+  const createTicket = useMutation({
+    mutationFn: (payload) => api.createSupportTicket(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supportTickets'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      setShowCreateModal(false);
+      setSubject('');
+      setCategory(categoryOptions[0] || '');
+      setSeverity('low');
+      setDescription('');
+    }
+  });
+
+  const updateTicket = useMutation({
+    mutationFn: ({ id, payload }) => api.updateSupportTicket(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supportTickets'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    }
+  });
+
+  const ticketStats = useMemo(() => {
+    const open = tickets.filter((ticket) => ['open', 'in_progress'].includes(ticket.status)).length;
+    const resolved = tickets.filter((ticket) => ['resolved', 'closed'].includes(ticket.status)).length;
+    return { open, resolved };
   }, [tickets]);
 
   const toggleFaq = (index) => {
@@ -71,21 +66,7 @@ export const Support = () => {
 
   const handleCreateTicket = (e) => {
     e.preventDefault();
-    const newTicket = {
-      id: `TKT-${Math.floor(10000 + Math.random() * 90000)}`,
-      subject,
-      category,
-      severity,
-      description,
-      status: 'open',
-      createdAt: new Date().toLocaleString()
-    };
-    setTickets([newTicket, ...tickets]);
-    setShowCreateModal(false);
-    setSubject('');
-    setCategory('Expense Submission');
-    setSeverity('low');
-    setDescription('');
+    createTicket.mutate({ category, subject, severity, description });
   };
 
   const getSeverityStyle = (sev) => {
@@ -98,17 +79,35 @@ export const Support = () => {
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'resolved': return <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />;
-      case 'in_progress': return <Clock className="h-4 w-4 text-amber-500 animate-spin" />;
-      default: return <Clock className="h-4 w-4 text-blue-500" />;
+      case 'resolved':
+      case 'closed':
+        return <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />;
+      case 'in_progress':
+        return <Clock className="h-4 w-4 text-amber-500" />;
+      default:
+        return <Clock className="h-4 w-4 text-blue-500" />;
     }
+  };
+
+  const nextStatus = (status) => {
+    if (status === 'open') return 'in_progress';
+    if (status === 'in_progress') return 'resolved';
+    if (status === 'resolved') return 'closed';
+    return null;
+  };
+
+  const nextStatusLabel = (status) => {
+    if (status === 'open') return 'Start Work';
+    if (status === 'in_progress') return 'Resolve';
+    if (status === 'resolved') return 'Close';
+    return '';
   };
 
   return (
     <>
       <PageHeader
         title="Help & Support"
-        description="Search through frequently asked questions or raise an issue directly with the IT and finance desks."
+        description="Raise operational tickets and track live responses from manager, finance, and admin desks."
         actions={
           <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreateModal(true)}>
             <Plus className="h-4 w-4" /> Open Support Ticket
@@ -116,27 +115,43 @@ export const Support = () => {
         }
       />
 
-      <div className="grid gap-6 md:grid-cols-2 mt-2">
-        {/* FAQs Panel */}
-        <section className="panel rounded-2xl p-5 space-y-4">
+      <div className="mb-5 grid gap-4 md:grid-cols-3">
+        <div className="panel rounded-lg p-4">
+          <p className="text-xs font-semibold uppercase text-slate-400">Visible Tickets</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{tickets.length}</p>
+        </div>
+        <div className="panel rounded-lg p-4">
+          <p className="text-xs font-semibold uppercase text-slate-400">Open Queue</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{ticketStats.open}</p>
+        </div>
+        <div className="panel rounded-lg p-4">
+          <p className="text-xs font-semibold uppercase text-slate-400">Resolved</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{ticketStats.resolved}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <section className="panel rounded-lg p-5 space-y-4">
           <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-3">
             <HelpCircle className="h-5 w-5 text-brand-600" /> FAQ Help Center
           </h3>
           <div className="space-y-3">
-            {FAQS.map((faq, index) => {
+            {faqsLoading && <div className="text-sm text-slate-400 py-6 text-center">Loading help articles...</div>}
+            {!faqsLoading && !faqs.length && <div className="text-sm text-slate-400 py-6 text-center">No help articles configured.</div>}
+            {faqs.map((faq, index) => {
               const isOpen = faqOpenIndex === index;
               return (
-                <div key={index} className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div key={faq.id || faq.question} className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
                   <button
                     onClick={() => toggleFaq(index)}
                     className="w-full flex items-center justify-between p-4 text-left font-semibold text-sm text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
                   >
-                    <span>{faq.q}</span>
+                    <span>{faq.question}</span>
                     {isOpen ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
                   </button>
                   {isOpen && (
                     <div className="p-4 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-150 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-450 leading-relaxed">
-                      {faq.a}
+                      {faq.answer}
                     </div>
                   )}
                 </div>
@@ -145,100 +160,90 @@ export const Support = () => {
           </div>
         </section>
 
-        {/* Tickets Tracking Panel */}
-        <section className="panel rounded-2xl p-5 space-y-4">
+        <section className="panel rounded-lg p-5 space-y-4">
           <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-3">
             <LifeBuoy className="h-5 w-5 text-brand-600" /> Ticket Status Tracker
           </h3>
-          <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
-            {tickets.map((ticket) => (
-              <div key={ticket.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{ticket.id}</span>
-                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100 mt-0.5">{ticket.subject}</h4>
-                  </div>
-                  <div className="flex gap-2">
+          <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+            {ticketsLoading && <div className="text-sm text-slate-400 py-6 text-center">Loading tickets...</div>}
+            {!ticketsLoading && !tickets.length && <div className="text-sm text-slate-400 py-6 text-center">No support tickets yet.</div>}
+            {tickets.map((ticket) => {
+              const actionStatus = canManageTickets ? nextStatus(ticket.status) : null;
+              return (
+                <div key={ticket._id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-3">
+                  <div className="flex justify-between items-start gap-3">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{ticket.ticketNo}</span>
+                      <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100 mt-0.5">{ticket.subject}</h4>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {ticket.employeeId?.name || 'Employee'} - {ticket.category} - Routed to {ticket.assignedRole?.replace('_', ' ')}
+                      </p>
+                    </div>
                     <span className={`text-[10px] uppercase font-bold border rounded-md px-1.5 py-0.5 ${getSeverityStyle(ticket.severity)}`}>
                       {ticket.severity}
                     </span>
                   </div>
-                </div>
 
-                <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
-                  {ticket.description}
-                </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{ticket.description}</p>
 
-                <div className="flex justify-between items-center text-[10px] text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-2.5">
-                  <span className="flex items-center gap-1">
-                    {getStatusIcon(ticket.status)}
-                    <span className="capitalize font-semibold text-slate-700 dark:text-slate-300">{ticket.status.replace('_', ' ')}</span>
-                  </span>
-                  <span>Raised: {ticket.createdAt}</span>
+                  <div className="flex flex-wrap justify-between items-center gap-3 text-[10px] text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-2.5">
+                    <span className="flex items-center gap-1">
+                      {getStatusIcon(ticket.status)}
+                      <span className="capitalize font-semibold text-slate-700 dark:text-slate-300">{statusLabel(ticket.status)}</span>
+                    </span>
+                    <span>Raised: {formatDate(ticket.createdAt)}</span>
+                    {actionStatus && (
+                      <button
+                        className="btn-secondary px-3 py-1 text-xs"
+                        disabled={updateTicket.isPending}
+                        onClick={() => updateTicket.mutate({ id: ticket._id, payload: { status: actionStatus } })}
+                      >
+                        {nextStatusLabel(ticket.status)}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>
 
-      {/* Support Ticket Modal */}
       <Modal
         open={showCreateModal}
         title="Raise Support Ticket"
-        description="Describe the issue you are facing. Our operations team will reach out directly."
+        description="Describe the issue you are facing. It will be routed automatically to the right desk."
         onClose={() => setShowCreateModal(false)}
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
             <button
               className="btn-primary flex items-center gap-1"
-              disabled={!subject || !description}
+              disabled={!subject || !description || !category || createTicket.isPending}
               onClick={handleCreateTicket}
             >
-              <Send className="h-4 w-4" /> Send Ticket
+              <Send className="h-4 w-4" /> {createTicket.isPending ? 'Sending...' : 'Send Ticket'}
             </button>
           </>
         }
       >
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={handleCreateTicket}>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Category</label>
-            <select
-              className="input w-full"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              <option>Expense Submission</option>
-              <option>OCR Scanning</option>
-              <option>Payments</option>
-              <option>Trips & Travel</option>
-              <option>Policy/Violations</option>
-              <option>Other</option>
+            <select className="input w-full" value={category} onChange={(e) => setCategory(e.target.value)}>
+              {categoryOptions.map((option) => <option key={option}>{option}</option>)}
             </select>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Subject</label>
-            <input
-              className="input w-full"
-              placeholder="e.g. Failure loading Axis bank verification"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              required
-            />
+            <input className="input w-full" placeholder="Short issue title" value={subject} onChange={(e) => setSubject(e.target.value)} required />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Urgency</label>
-            <select
-              className="input w-full"
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value)}
-            >
-              <option value="low">Low - General query</option>
-              <option value="medium">Medium - Functional bug</option>
-              <option value="high">High - Blocked transaction</option>
+            <select className="input w-full" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              {severityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </div>
 
@@ -246,7 +251,7 @@ export const Support = () => {
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Detailed Description</label>
             <textarea
               className="input w-full min-h-24"
-              placeholder="Include transaction references or error messages if applicable..."
+              placeholder="Include report, expense, trip, or payment references if applicable."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required

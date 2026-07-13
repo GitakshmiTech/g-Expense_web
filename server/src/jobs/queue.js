@@ -17,7 +17,8 @@ export const enqueueNotification = async (payload) => {
     return { queued: true };
   } catch (error) {
     logger.warn('Notification queue unavailable', { error: error.message });
-    return { queued: false, reason: error.message };
+    await notifyUser(payload);
+    return { queued: false, deliveredDirectly: true, reason: error.message };
   }
 };
 

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createUser, listUserDirectory, listUsers, updateUser } from '../controllers/user.controller.js';
+import { createUser, deleteUser, listUserDirectory, listUsers, updateOwnPassword, updateUser } from '../controllers/user.controller.js';
 import { authenticate, requireRoles } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../middleware/permission.middleware.js';
 import { enforceTenant } from '../middleware/tenant.middleware.js';
@@ -15,4 +15,6 @@ userRoutes.use(authenticate, enforceTenant);
 userRoutes.get('/directory', requireRoles('company_admin', 'manager', 'finance', 'super_admin', 'employee', 'cfo'), listUserDirectory);
 userRoutes.get('/', requireRoles('company_admin', 'manager', 'finance', 'super_admin', 'employee', 'cfo'), requirePermission('employees', 'view'), listUsers);
 userRoutes.post('/', requireRoles('company_admin', 'super_admin'), requirePermission('employees', 'create'), createUser);
+userRoutes.post('/me/password', updateOwnPassword);
 userRoutes.patch('/:id', requireEmployeeEditOrSelf, updateUser);
+userRoutes.delete('/:id', requireRoles('company_admin', 'super_admin'), requirePermission('employees', 'edit'), deleteUser);

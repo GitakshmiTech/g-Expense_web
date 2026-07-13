@@ -17,8 +17,28 @@ export const api = {
   expenseReports: async () => (await http.get('/expenses/reports')).data,
   createExpenseReport: async (payload) => (await http.post('/expenses/reports', payload)).data,
   submitExpenseReport: async (id) => (await http.post(`/expenses/reports/${id}/submit`)).data,
+  expenseCategoryCatalog: async () => (await http.get('/expense-categories/catalog')).data,
+  simulateExpenseCategoryImpact: async (payload) => (await http.post('/expense-categories/simulate-impact', payload, { silentToast: true })).data,
   travelRequests: async () => (await http.get('/expenses/travel-requests')).data,
+  travelAssets: async (params) => (await http.get('/expenses/travel-assets', { params })).data,
+  integrationVendors: async (params) => (await http.get('/integrations/vendors/live', { params })).data,
+  estimateTravelRequest: async (payload) => (await http.post('/expenses/travel-requests/estimate', payload, { silentToast: true })).data,
   createTravelRequest: async (payload) => (await http.post('/expenses/travel-requests', payload)).data,
+  actTravelRequest: async (id, payload) => (await http.post(`/expenses/travel-requests/${id}/action`, payload)).data,
+  advanceRequests: async () => (await http.get('/expenses/advance-requests')).data,
+  createAdvanceRequest: async (payload) => (await http.post('/expenses/advance-requests', payload)).data,
+  settleAdvanceRequest: async (id, payload) => (await http.post(`/expenses/advance-requests/${id}/settle`, payload)).data,
+  migrateSubmitted: async () => (await http.post('/expenses/migrate-submitted')).data,
+  uploadReceipt: async (id, file) => {
+    const body = new FormData();
+    body.append('receipt', file);
+    return (await http.post(`/expenses/${id}/receipt`, body)).data;
+  },
+  scanReceiptOnly: async (file) => {
+    const body = new FormData();
+    body.append('receipt', file);
+    return (await http.post('/expenses/ocr', body)).data;
+  },
   advanceRequests: async () => (await http.get('/expenses/advance-requests')).data,
   createAdvanceRequest: async (payload) => (await http.post('/expenses/advance-requests', payload)).data,
   settleAdvanceRequest: async (id, payload) => (await http.post(`/expenses/advance-requests/${id}/settle`, payload)).data,
@@ -43,11 +63,9 @@ export const api = {
   userDirectory: async () => (await http.get('/users/directory')).data,
   createUser: async (payload) => (await http.post('/users', payload)).data,
   updateUser: async (id, payload) => (await http.patch(`/users/${id}`, payload)).data,
+  deleteUser: async (id) => (await http.delete(`/users/${id}`)).data,
+  changePassword: async (id, payload) => (await http.patch(`/users/${id}`, { ...payload, passwordChange: true })).data,
   companies: async () => (await http.get('/companies')).data,
-  createCompany: async (payload) => (await http.post('/companies', payload)).data,
-  updateCompany: async (id, payload) => (await http.patch(`/companies/${id}`, payload)).data,
-  budgets: async () => (await http.get('/budgets')).data,
-  createBudget: async (payload) => (await http.post('/budgets', payload)).data,
   policies: async () => (await http.get('/policies')).data,
   createPolicy: async (payload) => (await http.post('/policies', payload)).data,
   travels: async () => (await http.get('/travels')).data,
@@ -56,6 +74,12 @@ export const api = {
   createWorkflow: async (payload) => (await http.post('/workflows', payload)).data,
   audit: async () => (await http.get('/audit')).data,
   notifications: async () => (await http.get('/notifications')).data,
+  supportOptions: async () => (await http.get('/support/options')).data,
+  supportFaqs: async () => (await http.get('/support/faqs')).data,
+  supportTickets: async () => (await http.get('/support/tickets')).data,
+  createSupportTicket: async (payload) => (await http.post('/support/tickets', payload)).data,
+  updateSupportTicket: async (id, payload) => (await http.patch(`/support/tickets/${id}`, payload)).data,
+  addSupportTicketComment: async (id, payload) => (await http.post(`/support/tickets/${id}/comments`, payload)).data,
   enterpriseModules: async () => (await http.get('/enterprise/modules')).data,
   enterpriseList: async (module, params) => (await http.get(`/enterprise/${module}`, { params })).data,
   enterpriseCreate: async (module, payload) => (await http.post(`/enterprise/${module}`, payload)).data,

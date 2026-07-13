@@ -3,20 +3,23 @@ import { ApiError } from '../helpers/apiError.js';
 import { tenantFilter } from '../middleware/tenant.middleware.js';
 import { Expense, Receipt } from '../models/Expense.js';
 import { ExpenseReport, OcrLog, Reimbursement } from '../models/Enterprise.js';
-import { AdvanceRequest, ExpenseAuditLog, ExpenseComment, ExpenseParticipant, ExpenseSplitAllocation, TravelRequest } from '../models/ExpenseEcosystem.js';
+import { AdvanceRequest, ExpenseAuditLog, ExpenseComment, ExpenseParticipant, ExpenseSplitAllocation } from '../models/ExpenseEcosystem.js';
 import { evaluateExpensePolicy } from '../policies/policy.engine.js';
 import { resolveExpenseWorkflow } from '../workflows/workflow.engine.js';
 import { detectFraud } from '../services/fraud.service.js';
 import { extractReceiptFields } from '../services/ocr.service.js';
 import { consumeBudgetForExpense } from '../services/budget.service.js';
 import { applyApprovalAction, persistApprovalPath } from '../services/approval.engine.js';
+import { findActiveExpenseCategory } from '../services/category.service.js';
 import { createReimbursementForExpense, markPaid, markPaymentProcessing } from '../services/reimbursement.service.js';
-import { createTravelRequest } from '../services/travel.service.js';
+import { actOnTravelRequest, createTravelRequest, estimateTravelRequest, listTravelRequestsForUser } from '../services/travel.service.js';
 import { createAdvanceRequest, settleAdvance } from '../services/advance.service.js';
 import { calculateSharedAllocations, loadSharedExpenseDetails, upsertSharedExpenseRecords, validateSharedParticipants } from '../services/sharedExpense.service.js';
 import { writeAudit } from '../audit/audit.service.js';
 import { enqueueNotification } from '../jobs/queue.js';
+import { notifyExpenseStatusChanged, notifyExpenseSubmitted, notifyReportSubmitted, notifyTravelSubmitted, notifyTravelStatusChanged } from '../notification/notification.service.js';
 import { normalizeExpenseStatus, nextStatusFromApprovalPath } from '../constants/expenseLifecycle.js';
+import { listAvailableTravelAssets } from '../services/assetIntegration.service.js';
 import crypto from 'crypto';
 import fs from 'fs';
 
@@ -39,6 +42,14 @@ const auditExpense = async ({ req, expense, action, before, after, metadata }) =
   });
 };
 
+const ensureActiveExpenseCategory = async ({ req, category }) => {
+  const categoryDoc = await findActiveExpenseCategory({ companyId: req.companyId, category, actorId: req.user?._id });
+  if (!categoryDoc) {
+    throw new ApiError(400, `Expense category '${category}' is inactive or not configured`);
+  }
+  return categoryDoc;
+};
+
 export const listExpenses = asyncHandler(async (req, res) => {
   const filters = { ...tenantFilter(req) };
   if (req.query.status) filters.status = normalizeExpenseStatus(req.query.status);
@@ -51,8 +62,15 @@ export const listExpenses = asyncHandler(async (req, res) => {
   res.json(expenses);
 });
 
+export const listTravelAssets = asyncHandler(async (req, res) => {
+  const assets = await listAvailableTravelAssets({ search: req.query.search, category: req.query.category });
+  res.json({ success: true, assets });
+});
+
 export const getExpense = asyncHandler(async (req, res) => {
-  const expense = await Expense.findOne({ _id: req.params.id, ...tenantFilter(req) }).populate('employeeId', 'name email department');
+  const expense = await Expense.findOne({ _id: req.params.id, ...tenantFilter(req) })
+    .populate('employeeId', 'name email department')
+    .populate('receipts');
   if (!expense) throw new ApiError(404, 'Expense not found');
   res.json(expense);
 });
@@ -68,6 +86,8 @@ export const migrateSubmitted = asyncHandler(async (req, res) => {
 
 export const createExpense = asyncHandler(async (req, res) => {
   const { receiptFile, receiptFiles = [], sharedExpense, ...expenseData } = req.body;
+  const categoryDoc = await ensureActiveExpenseCategory({ req, category: expenseData.category });
+  expenseData.category = categoryDoc.name;
   const normalizedReceiptFiles = receiptFiles.length ? receiptFiles : receiptFile ? [receiptFile] : [];
   if (sharedExpense?.enabled && normalizedReceiptFiles.length > 1) throw new ApiError(400, 'Shared expenses support only one receipt');
   const requestedStatus = normalizeExpenseStatus(expenseData.status || 'DRAFT');
@@ -164,13 +184,7 @@ export const createExpense = asyncHandler(async (req, res) => {
   await auditExpense({ req, expense, action: expense.isSharedExpense ? 'shared_expense.create' : 'expense.create', after: expense.toObject(), metadata: { sharedExpense } });
   
   if (requestedStatus === 'SUBMITTED') {
-    await enqueueNotification({
-      companyId: expense.companyId,
-      userId: expense.employeeId?._id || expense.employeeId,
-      title: 'Expense Submitted',
-      message: `Your ${expense.category} expense of ${expense.amount} ${expense.currency} has been submitted for approval.`,
-      data: { expenseId: expense._id }
-    });
+    await notifyExpenseSubmitted({ req, expense });
     if (expense.isSharedExpense) await notifySharedParticipants({ req, expense, title: 'Shared Expense Submitted', message: `${req.user.name} submitted a shared ${expense.category} expense.` });
   }
 
@@ -268,14 +282,7 @@ export const submitExpense = asyncHandler(async (req, res) => {
   await writeAudit({ req, action: 'expense.submit', entity: 'Expense', entityId: expense._id.toString(), after: expense.toObject() });
   await auditExpense({ req, expense, action: 'expense.submit', after: expense.toObject() });
 
-  // Notify the employee of submission
-  await enqueueNotification({
-    companyId: expense.companyId,
-    userId: expense.employeeId?._id || expense.employeeId,
-    title: 'Expense Submitted',
-    message: `Your ${expense.category} expense of ${expense.amount} ${expense.currency} has been submitted for approval.`,
-    data: { expenseId: expense._id }
-  });
+  await notifyExpenseSubmitted({ req, expense });
   if (expense.isSharedExpense) await notifySharedParticipants({ req, expense, title: 'Shared Expense Submitted', message: `${req.user.name} submitted a shared ${expense.category} expense.` });
 
   res.json(expense);
@@ -304,13 +311,7 @@ export const actOnExpense = asyncHandler(async (req, res) => {
   }
   expense.timeline.push({ status: expense.status, action, actorId: req.user._id, note });
   await expense.save();
-  await enqueueNotification({
-    companyId: expense.companyId,
-    userId: expense.employeeId?._id || expense.employeeId,
-    title: `Expense ${expense.status}`,
-    message: `Your ${expense.category} expense is now ${expense.status}`,
-    data: { expenseId: expense._id }
-  });
+  await notifyExpenseStatusChanged({ req, expense, action, note });
   if (expense.isSharedExpense) await notifySharedParticipants({ req, expense, title: `Shared Expense ${expense.status}`, message: `Shared ${expense.category} expense is now ${expense.status}.` });
   await writeAudit({ req, action: `expense.${action}`, entity: 'Expense', entityId: expense._id.toString(), after: expense.toObject() });
   await auditExpense({ req, expense, action: `expense.${action}`, before, after: expense.toObject(), metadata: { note } });
@@ -449,6 +450,17 @@ export const addExpenseComment = asyncHandler(async (req, res) => {
   expense.timeline.push({ status: expense.status, action: 'comment_added', actorId: req.user._id });
   await expense.save();
   await auditExpense({ req, expense, action: 'expense.comment', metadata: { commentId: comment._id } });
+  if (String(expense.employeeId) !== String(req.user._id)) {
+    await enqueueNotification({
+      companyId: req.companyId,
+      userId: expense.employeeId,
+      title: 'New comment on expense',
+      message: `${req.user.name || 'Someone'} commented on your ${expense.category || 'expense'} expense.`,
+      category: 'comment',
+      actionUrl: `/expenses/${expense._id}`,
+      data: { kind: 'expense', expenseId: expense._id, commentId: comment._id, actorId: req.user._id }
+    });
+  }
   res.status(201).json(comment);
 });
 
@@ -488,6 +500,9 @@ export const createExpenseReport = asyncHandler(async (req, res) => {
     reportNo: nextReportNo(),
     title: req.body.title || `Expense Report ${new Date().toLocaleDateString('en-IN')}`,
     expenseIds: expenses.map((expense) => expense._id),
+    expenses: expenses.map((expense) => expense._id),
+    totalAmount: totalAmount,
+    currency: req.body.currency || 'INR',
     total: {
       amount: totalAmount,
       currency: req.body.currency || 'INR'
@@ -504,8 +519,10 @@ export const submitExpenseReport = asyncHandler(async (req, res) => {
   if (!report) throw new ApiError(404, 'Report not found');
   report.status = 'submitted';
   report.submittedAt = new Date();
-  await Expense.updateMany({ _id: { $in: report.expenseIds }, ...tenantFilter(req) }, { $set: { status: 'PENDING_MANAGER' } });
+  const targetExpenseIds = (report.expenseIds && report.expenseIds.length) ? report.expenseIds : (report.expenses || []);
+  await Expense.updateMany({ _id: { $in: targetExpenseIds }, ...tenantFilter(req) }, { $set: { status: 'PENDING_MANAGER' } });
   await report.save();
+  await notifyReportSubmitted({ req, report });
   await writeAudit({ req, action: 'expense_report.submit', entity: 'ExpenseReport', entityId: report._id.toString(), after: report.toObject() });
   res.json(report);
 });
@@ -520,12 +537,52 @@ export const verifyFinance = asyncHandler(async (req, res) => {
   expense.timeline.push({ status: expense.status, action: `finance_${req.body.action || 'verify'}`, actorId: req.user._id, note: req.body.note });
   await expense.save();
   await auditExpense({ req, expense, action: 'expense.finance.verify', before, after: expense.toObject(), metadata: req.body });
+  await notifyExpenseStatusChanged({ req, expense, action: req.body.action || 'verify', note: req.body.note });
   res.json(expense);
 });
 
 export const processExpenseReimbursement = asyncHandler(async (req, res) => {
   const expense = await Expense.findOne({ _id: req.params.id, ...tenantFilter(req) });
   if (!expense) throw new ApiError(404, 'Expense not found');
+  if (!['PAYMENT_PROCESSING', 'REIMBURSED', 'UNDER_VERIFICATION'].includes(expense.status)) {
+    throw new ApiError(400, `Cannot reimburse expense with status '${expense.status}'`);
+  }
+
+  if (expense.isSharedExpense && expense.reimbursementMode === 'individual') {
+    const allocations = await ExpenseSplitAllocation.find({ companyId: req.companyId, expenseId: expense._id });
+    if (!allocations.length) throw new ApiError(400, 'Shared expense allocations are missing');
+    const reimbursements = await Promise.all(allocations.map((allocation) => Reimbursement.findOneAndUpdate(
+      { companyId: req.companyId, expenseId: expense._id, employeeId: allocation.employeeId },
+      {
+        $setOnInsert: {
+          companyId: req.companyId,
+          expenseId: expense._id,
+          employeeId: allocation.employeeId,
+          amount: allocation.allocatedAmount,
+          currency: expense.baseCurrency || expense.currency || 'INR',
+          method: req.body.method || 'bank_transfer',
+          createdBy: req.user._id
+        },
+        $set: {
+          status: req.body.markPaid ? 'paid' : 'processing',
+          reference: req.body.transactionId,
+          paidAt: req.body.markPaid ? new Date() : undefined,
+          updatedBy: req.user._id
+        }
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    )));
+    await ExpenseSplitAllocation.updateMany(
+      { companyId: req.companyId, expenseId: expense._id },
+      { $set: { reimbursementStatus: req.body.markPaid ? 'paid' : 'processing', ledgerStatus: 'posted', settledAt: req.body.markPaid ? new Date() : undefined } }
+    );
+    expense.status = req.body.markPaid ? 'REIMBURSED' : 'PAYMENT_PROCESSING';
+    expense.timeline.push({ status: expense.status, action: 'shared_reimbursement_processing', actorId: req.user._id, note: req.body.transactionId });
+    await expense.save();
+    await notifyExpenseStatusChanged({ req, expense, action: 'reimburse', note: req.body.markPaid ? 'Your reimbursement has been paid.' : 'Your reimbursement is being processed.' });
+    return res.status(201).json({ reimbursements, expense });
+  }
+
   const reimbursement = await createReimbursementForExpense({ req, expense, method: req.body.method || 'bank_transfer' });
   await markPaymentProcessing({ reimbursement, reference: req.body.transactionId, method: req.body.method });
   if (req.body.markPaid) {
@@ -534,8 +591,15 @@ export const processExpenseReimbursement = asyncHandler(async (req, res) => {
   } else {
     expense.status = 'PAYMENT_PROCESSING';
   }
+  if (expense.isSharedExpense) {
+    await ExpenseSplitAllocation.updateMany(
+      { companyId: req.companyId, expenseId: expense._id },
+      { $set: { reimbursementStatus: req.body.markPaid ? 'paid' : 'processing', ledgerStatus: 'posted', settledAt: req.body.markPaid ? new Date() : undefined } }
+    );
+  }
   expense.timeline.push({ status: expense.status, action: 'reimbursement_processing', actorId: req.user._id, note: req.body.transactionId });
   await expense.save();
+  await notifyExpenseStatusChanged({ req, expense, action: 'reimburse', note: req.body.markPaid ? 'Your reimbursement has been paid.' : 'Your reimbursement is being processed.' });
   res.status(201).json({ reimbursement, expense });
 });
 
@@ -545,15 +609,31 @@ export const closeExpense = asyncHandler(async (req, res) => {
   expense.status = 'CLOSED';
   expense.timeline.push({ status: 'CLOSED', action: 'closed', actorId: req.user._id, note: req.body.note });
   await expense.save();
+  await notifyExpenseStatusChanged({ req, expense, action: 'close', note: req.body.note });
   res.json(expense);
 });
 
 export const listTravelRequests = asyncHandler(async (req, res) => {
-  res.json(await TravelRequest.find(tenantFilter(req)).populate('employeeId', 'name email department').sort({ createdAt: -1 }));
+  res.json(await listTravelRequestsForUser({ req }));
+});
+
+export const estimateTravel = asyncHandler(async (req, res) => {
+  res.json(await estimateTravelRequest({ payload: req.body, user: req.user }));
 });
 
 export const createTravel = asyncHandler(async (req, res) => {
-  res.status(201).json(await createTravelRequest({ req, payload: req.body }));
+  const trip = await createTravelRequest({ req, payload: req.body });
+  if (req.body.status === 'SUBMITTED' || req.body.status === 'submitted') {
+    await notifyTravelSubmitted({ req, trip });
+  }
+  res.status(201).json(trip);
+});
+
+export const actionTravel = asyncHandler(async (req, res) => {
+  const trip = await actOnTravelRequest({ req, id: req.params.id, action: req.body.action, note: req.body.note });
+  if (!trip) throw new ApiError(404, 'Travel request not found or action not allowed');
+  await notifyTravelStatusChanged({ req, trip, action: req.body.action, note: req.body.note });
+  res.json(trip);
 });
 
 export const listAdvanceRequests = asyncHandler(async (req, res) => {

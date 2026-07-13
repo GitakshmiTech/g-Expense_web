@@ -18,6 +18,9 @@ export const requirePermission = (page, action = 'view') => async (req, _res, ne
 };
 
 export const requireEnterprisePermission = (action = 'view') => async (req, _res, next) => {
+  if (action === 'view' && (req.params.module === 'departments' || req.params.module === 'projects')) {
+    return next();
+  }
   const page = MODULE_PAGE_MAP[req.params.module] || req.params.module;
   return requirePermission(page, action)(req, _res, next);
 };

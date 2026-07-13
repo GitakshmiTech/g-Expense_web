@@ -28,6 +28,8 @@ import { usePermission } from '../../hooks/usePermissions';
 export const ExpenseCategoriesPage = () => {
   const queryClient = useQueryClient();
   const canCreate = usePermission('expense_categories', 'create');
+  const canEdit = usePermission('expense_categories', 'edit');
+  const canDelete = usePermission('expense_categories', 'delete');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [activeTab, setActiveTab] = useState('basic');
@@ -71,6 +73,13 @@ export const ExpenseCategoriesPage = () => {
     onSuccess: () => {
       setDrawerOpen(false);
       resetState();
+      queryClient.invalidateQueries({ queryKey: ['enterprise', 'expense_categories'] });
+    }
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (id) => api.enterpriseDelete('expense_categories', id),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['enterprise', 'expense_categories'] });
     }
   });
@@ -124,18 +133,12 @@ export const ExpenseCategoriesPage = () => {
   const runChangeSimulation = async (categoryCode) => {
     setIsSimulating(true);
     try {
-      const response = await fetch('/api/expense-categories/simulate-impact', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
-        },
-        body: JSON.stringify({
-          categoryCode: categoryCode || 'EXP-TEST',
-          limits: { roleBased: roleLimits }
-        })
+      const data = await api.simulateExpenseCategoryImpact({
+        categoryId: selectedCategory?._id,
+        categoryCode: categoryCode || selectedCategory?.code || 'EXP-TEST',
+        limits: { roleBased: roleLimits },
+        dynamicFields: dynamicFieldsList
       });
-      const data = await response.json();
       if (data.success) {
         setSimulationResult(data.simulationResult);
       }
@@ -261,12 +264,31 @@ export const ExpenseCategoriesPage = () => {
     {
       header: 'Actions',
       cell: ({ row }) => (
-        <button className="btn-secondary py-1 text-xs" onClick={() => handleEdit(row.original)}>
-          Configure
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn-secondary py-1 px-2.5 text-xs hover:bg-slate-100"
+            disabled={!canEdit}
+            onClick={() => handleEdit(row.original)}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="btn-danger py-1 px-2.5 text-xs flex items-center gap-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded border border-rose-200"
+            disabled={!canDelete}
+            onClick={() => {
+              if (window.confirm(`Are you sure you want to delete the "${row.original.name}" category?`)) {
+                deleteCategoryMutation.mutate(row.original._id);
+              }
+            }}
+          >
+            <Trash2 className="h-3 w-3" /> Delete
+          </button>
+        </div>
       )
     }
-  ], []);
+  ], [canEdit, canDelete, deleteCategoryMutation]);
 
   return (
     <>
@@ -364,7 +386,7 @@ export const ExpenseCategoriesPage = () => {
                   </label>
                   <label className="grid gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">
                     <span>Active Status</span>
-                    <select className="input" name="active" defaultValue={selectedCategory?.active ? 'true' : 'false'}>
+                    <select className="input" name="active" defaultValue={selectedCategory ? (selectedCategory.active ? 'true' : 'false') : 'true'}>
                       <option value="true">Active</option>
                       <option value="false">Inactive</option>
                     </select>
@@ -471,7 +493,7 @@ export const ExpenseCategoriesPage = () => {
                 <div className="space-y-6">
                   <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-4">
                     <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
-                      <Plus className="h-4 w-4 text-indigo-600" /> Create Category Context Field
+                      <Plus className="h-4 w-4 text-indigo-650" /> Create Category Context Field
                     </h3>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <input className="input text-xs" placeholder="Field ID (e.g. airline_name)" value={newFieldId} onChange={(e) => setNewFieldId(e.target.value)} />

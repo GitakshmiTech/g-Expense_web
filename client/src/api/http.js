@@ -6,6 +6,40 @@ export const http = axios.create({
   baseURL: '/api'
 });
 
+const formatMoney = (amount, currency = 'INR') => {
+  const value = Number(amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  return `${currency === 'INR' ? '₹' : currency} ${value}`;
+};
+
+const expenseLabel = (expense = {}) => {
+  const parts = [
+    expense.category || 'Expense',
+    expense.merchant ? `at ${expense.merchant}` : '',
+    expense.amount ? formatMoney(expense.amount, expense.currency) : ''
+  ].filter(Boolean);
+  return parts.join(' · ');
+};
+
+const responseMessage = ({ method, url, data }) => {
+  const verb = method?.toLowerCase();
+  const expense = data?.expense || data;
+
+  if (data?.passwordChanged || url?.includes('/users/me/password')) return 'Password changed successfully.';
+  if (url?.includes('/expenses/travel-requests/') && url?.includes('/action')) return `Travel request updated: ${data?.title || data?.travelId || 'Trip'} · ${String(data?.status || '').replaceAll('_', ' ')}`;
+  if (url === '/expenses/travel-requests' && verb === 'post') return `Travel request ${data?.status === 'DRAFT' ? 'saved' : 'submitted'}: ${data?.title || data?.destination || 'Trip'} · ${formatMoney(data?.budget?.amount, data?.budget?.currency)}`;
+  if (url?.includes('/expenses/shared/create')) return `Shared expense created: ${expenseLabel(expense)}`;
+  if (url?.match(/^\/expenses\/[^/]+\/submit$/)) return `Expense submitted: ${expenseLabel(expense)}${expense.status ? ` · ${String(expense.status).replaceAll('_', ' ')}` : ''}`;
+  if (url === '/expenses' && verb === 'post') return `Expense created: ${expenseLabel(expense)}`;
+  if (url?.includes('/expenses/reports') && verb === 'post') return `Expense report saved: ${data?.title || 'Report'}`;
+
+  if (url?.includes('/approve') || url?.includes('/action')) return 'Action completed successfully.';
+  if (url?.includes('/reject')) return 'Rejected successfully.';
+  if (verb === 'delete') return 'Deleted successfully.';
+  if (verb === 'post') return data?.message || 'Created successfully.';
+  if (verb === 'put' || verb === 'patch') return data?.message || 'Saved successfully.';
+  return 'Action completed successfully.';
+};
+
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem('gt_access_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -29,20 +63,9 @@ const processQueue = (error, token = null) => {
 http.interceptors.response.use(
   (response) => {
     const { method, url } = response.config || {};
-    if (['post', 'put', 'patch', 'delete'].includes(method?.toLowerCase())) {
-      if (!url?.includes('/auth/refresh') && !url?.includes('/auth/login')) {
-        let message = 'Action completed successfully!';
-        if (url?.includes('/approve') || url?.includes('/action')) {
-          message = 'Approved successfully!';
-        } else if (url?.includes('/reject')) {
-          message = 'Rejected successfully!';
-        } else if (method.toLowerCase() === 'delete') {
-          message = 'Deleted successfully!';
-        } else if (method.toLowerCase() === 'post') {
-          message = 'Created successfully!';
-        } else if (method.toLowerCase() === 'put' || method.toLowerCase() === 'patch') {
-          message = 'Saved successfully!';
-        }
+    if (!response.config?.silentToast && ['post', 'put', 'patch', 'delete'].includes(method?.toLowerCase())) {
+      if (!url?.includes('/auth/refresh') && !url?.includes('/auth/login') && !url?.includes('/auth/sso-login')) {
+        const message = responseMessage({ method, url, data: response.data });
         window.dispatchEvent(new CustomEvent('app-toast', { detail: { message, type: 'success' } }));
       }
     }
@@ -52,14 +75,15 @@ http.interceptors.response.use(
     const originalRequest = error.config;
     console.error('[HTTP Interceptor] Response error status:', error.response?.status, 'URI:', originalRequest?.url);
 
-    const isTokenRetry = error.response?.status === 401 && originalRequest && !originalRequest._retry;
+    const isAuthRoute = originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/auth/sso-login') || originalRequest?.url?.includes('/auth/refresh');
+    const isTokenRetry = error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthRoute;
     if (!isTokenRetry && originalRequest && !originalRequest.url?.includes('/auth/refresh')) {
       const message = error.response?.data?.message || error.message || 'Something went wrong';
       window.dispatchEvent(new CustomEvent('app-toast', { detail: { message, type: 'error' } }));
     }
 
     try {
-      if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthRoute) {
         console.error('[HTTP Interceptor] 401 detected, isRefreshing:', isRefreshing);
         if (isRefreshing) {
           console.error('[HTTP Interceptor] Already refreshing, queuing request:', originalRequest.url);
@@ -118,6 +142,3 @@ http.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-
-

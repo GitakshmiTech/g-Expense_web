@@ -2,6 +2,7 @@ import { Budget } from '../models/Budget.js';
 import { EnterprisePolicy } from '../models/EnterprisePolicy.js';
 import { Travel } from '../models/Travel.js';
 import { Workflow } from '../models/Workflow.js';
+import { User } from '../models/User.js';
 import {
   ActivityLog,
   Approval,
@@ -15,7 +16,7 @@ import {
   Reimbursement
 } from '../models/Enterprise.js';
 import { BaseRepository } from '../repositories/base.repository.js';
-
+import { ensureExpenseCategoryCatalog } from './category.service.js';
 export const moduleRegistry = {
   departments: {
     Model: Department,
@@ -105,6 +106,44 @@ export const moduleRegistry = {
 
 export const getModuleConfig = (moduleName) => moduleRegistry[moduleName];
 
+const normalizeExpenseCategoryPayload = (payload = {}) => {
+  const code = String(payload.code || payload.name || '').trim().toUpperCase().replace(/\s+/g, '_');
+  return {
+    ...payload,
+    name: String(payload.name || '').trim(),
+    code,
+    active: payload.active !== false,
+    defaultLimit: {
+      amount: Number(payload.defaultLimit?.amount || payload.limits?.perExpense || 0),
+      currency: payload.defaultLimit?.currency || 'INR'
+    },
+    receiptMandatoryAbove: Number(payload.receiptMandatoryAbove || 0),
+    limits: {
+      perExpense: Number(payload.limits?.perExpense || payload.defaultLimit?.amount || 0),
+      daily: Number(payload.limits?.daily || 0),
+      monthly: Number(payload.limits?.monthly || 0),
+      roleBased: payload.limits?.roleBased || {},
+      countryBased: payload.limits?.countryBased || {}
+    },
+    compliance: {
+      receiptMandatory: Boolean(payload.compliance?.receiptMandatory),
+      ocrMandatory: Boolean(payload.compliance?.ocrMandatory),
+      gstMandatory: Boolean(payload.compliance?.gstMandatory),
+      allowedMimetypes: payload.compliance?.allowedMimetypes?.length ? payload.compliance.allowedMimetypes : ['application/pdf', 'image/png', 'image/jpeg']
+    },
+    accounting: payload.accounting || {},
+    dynamicFields: Array.isArray(payload.dynamicFields) ? payload.dynamicFields : [],
+    workflow: {
+      approvalChain: payload.workflow?.approvalChain?.length ? payload.workflow.approvalChain : ['Manager'],
+      autoApprovalBelow: Number(payload.workflow?.autoApprovalBelow || 0)
+    },
+    aiSettings: {
+      fraudScoreThreshold: Number(payload.aiSettings?.fraudScoreThreshold || 40),
+      anomalyDetectionEnabled: payload.aiSettings?.anomalyDetectionEnabled !== false
+    }
+  };
+};
+
 export class EnterpriseService {
   constructor(moduleName) {
     const config = getModuleConfig(moduleName);
@@ -113,26 +152,74 @@ export class EnterpriseService {
     this.repository = new BaseRepository(config.Model);
   }
 
+
   async list(filter, query) {
+    if (this.config.Model.modelName === 'ExpenseCategory') {
+      await ensureExpenseCategoryCatalog({ companyId: filter.companyId, actorId: filter.createdBy });
+    }
     const { page = 1, limit = 100, search } = query;
+    
+    let listPromise;
+    if (this.config.Model.modelName === 'Department' || this.config.Model.modelName === 'Project') {
+      listPromise = this.config.Model.find(filter)
+        .populate('managerId', 'name email')
+        .sort({ createdAt: -1 })
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit));
+    } else {
+      listPromise = this.repository.list(filter, { page, limit, search, searchFields: this.config.searchFields });
+    }
+
     const [items, total] = await Promise.all([
-      this.repository.list(filter, { page, limit, search, searchFields: this.config.searchFields }),
+      listPromise,
       this.repository.count(filter, search, this.config.searchFields)
     ]);
     return { items, total, page: Number(page), limit: Number(limit) };
   }
 
   create(filter, payload, user) {
+    const normalizedPayload = this.config.Model.modelName === 'ExpenseCategory' ? normalizeExpenseCategoryPayload(payload) : payload;
     return this.repository.create({
-      ...payload,
-      companyId: filter.companyId || payload.companyId,
+      ...normalizedPayload,
+      companyId: filter.companyId || normalizedPayload.companyId,
       createdBy: user?._id,
       updatedBy: user?._id
     });
   }
 
-  update(filter, id, payload, user) {
-    return this.repository.update({ ...filter, _id: id }, { ...payload, updatedBy: user?._id });
+  async update(filter, id, payload, user) {
+    const normalizedPayload = this.config.Model.modelName === 'ExpenseCategory' ? normalizeExpenseCategoryPayload(payload) : payload;
+    
+    let oldRecord = null;
+    if (this.config.Model.modelName === 'Department') {
+      oldRecord = await this.config.Model.findOne({ ...filter, _id: id });
+    }
+    
+    const record = await this.repository.update({ ...filter, _id: id }, { ...normalizedPayload, updatedBy: user?._id });
+    
+    if (record && this.config.Model.modelName === 'Department' && oldRecord && oldRecord.name !== record.name) {
+      const companyId = filter.companyId || record.companyId;
+      const oldName = oldRecord.name;
+      const newName = record.name;
+      
+      // Update User collection
+      await User.updateMany(
+        { companyId, department: oldName },
+        { department: newName }
+      );
+      
+      // Update Budget collection
+      try {
+        await Budget.updateMany(
+          { companyId, type: 'department', department: oldName },
+          { department: newName }
+        );
+      } catch (e) {
+        console.error('Error updating budgets with new department name:', e);
+      }
+    }
+    
+    return record;
   }
 
   remove(filter, id) {

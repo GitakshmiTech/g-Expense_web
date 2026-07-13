@@ -6,8 +6,11 @@ const notificationSchema = new mongoose.Schema(
     ...tenantFields,
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
     type: { type: String, enum: ['email', 'in_app', 'sms', 'socket'], default: 'in_app' },
+    category: { type: String, default: 'general', index: true },
+    priority: { type: String, enum: ['low', 'normal', 'high'], default: 'normal' },
     title: String,
     message: String,
+    actionUrl: String,
     data: mongoose.Schema.Types.Mixed,
     readAt: Date,
     deliveredAt: Date

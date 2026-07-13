@@ -272,7 +272,7 @@ export const Company = () => {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
                   {labelWithIcon(Building2, 'Company Name')}
-                  <input required disabled={mode === 'view'} type="text" className="input bg-slate-50/50" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Acme Corp" />
+                  <input required disabled={mode === 'view'} type="text" className="input bg-slate-50/50" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Company name" />
                 </div>
                 <div>
                   {labelWithIcon(Mail, 'Admin Email')}

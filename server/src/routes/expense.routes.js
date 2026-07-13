@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   actOnExpense,
+  actionTravel,
   addExpenseComment,
   cloneExpense,
   closeExpense,
@@ -10,6 +11,7 @@ import {
   createSharedExpense,
   createTravel,
   calculateSharedSplit,
+  estimateTravel,
   getExpense,
   getSharedExpenseDetails,
   getExpenseTimeline,
@@ -17,6 +19,7 @@ import {
   listExpenseReports,
   listExpenses,
   listSharedExpenseParticipants,
+  listTravelAssets,
   listTravelRequests,
   migrateSubmitted,
   processExpenseReimbursement,
@@ -31,6 +34,7 @@ import {
   verifyFinance
 } from '../controllers/expense.controller.js';
 import { authenticate, requireRoles } from '../middleware/auth.middleware.js';
+import { requirePermission } from '../middleware/permission.middleware.js';
 import { enforceTenant } from '../middleware/tenant.middleware.js';
 import { upload } from '../middleware/upload.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
@@ -52,8 +56,11 @@ expenseRoutes.post('/shared/reimburse', requireRoles('finance', 'company_admin',
 expenseRoutes.get('/reports', listExpenseReports);
 expenseRoutes.post('/reports', createExpenseReport);
 expenseRoutes.post('/reports/:id/submit', submitExpenseReport);
-expenseRoutes.get('/travel-requests', listTravelRequests);
-expenseRoutes.post('/travel-requests', createTravel);
+expenseRoutes.get('/travel-requests', requirePermission('trips', 'view'), listTravelRequests);
+expenseRoutes.get('/travel-assets', requirePermission('trips', 'create'), listTravelAssets);
+expenseRoutes.post('/travel-requests/estimate', requirePermission('trips', 'view'), estimateTravel);
+expenseRoutes.post('/travel-requests', requirePermission('trips', 'create'), createTravel);
+expenseRoutes.post('/travel-requests/:id/action', requirePermission('trips', 'approve'), actionTravel);
 expenseRoutes.get('/advance-requests', listAdvanceRequests);
 expenseRoutes.post('/advance-requests', createAdvance);
 expenseRoutes.post('/advance-requests/:id/settle', requireRoles('finance', 'company_admin', 'super_admin'), settleAdvanceRequest);

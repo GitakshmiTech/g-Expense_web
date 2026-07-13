@@ -8,6 +8,12 @@ export const env = {
   mongoUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/gt_expense_management',
   jwtSecret: process.env.JWT_SECRET || 'GTEXPENCESECRET',
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'GTEXPENCEREFRESHSECRET',
+  integration: {
+    serviceToken: process.env.INTEGRATION_SERVICE_TOKEN || process.env.ASSET_EXPENSE_INTEGRATION_TOKEN || 'asset-expense-dev-token',
+    assetApiBaseUrl: process.env.ASSET_API_BASE_URL || 'http://localhost:7000/api',
+    defaultCompanyId: process.env.INTEGRATION_DEFAULT_COMPANY_ID || '',
+    defaultUserEmail: process.env.INTEGRATION_DEFAULT_USER_EMAIL || ''
+  },
   superAdminEmail: process.env.SUPER_ADMIN_EMAIL || 'gtexpence@gmail.com',
   superAdminPassword: process.env.SUPER_ADMIN_PASSWORD || 'admin123',
   redis: {

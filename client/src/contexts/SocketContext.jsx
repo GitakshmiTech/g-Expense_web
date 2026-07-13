@@ -6,12 +6,12 @@ const SocketContext = createContext(null);
 
 export const SocketProvider = ({ children }) => {
   const user = useSelector((state) => state.auth.user);
-  const socket = useMemo(() => io('/', { autoConnect: false }), []);
+  const socket = useMemo(() => io(import.meta.env.VITE_SERVER_URL || '/', { autoConnect: false }), []);
 
   useEffect(() => {
     if (!user) return;
     socket.connect();
-    socket.emit('session:join', { userId: user.id, companyId: user.companyId });
+    socket.emit('session:join', { userId: user.id || user._id, companyId: user.companyId });
     return () => socket.disconnect();
   }, [socket, user]);
 

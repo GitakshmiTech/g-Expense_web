@@ -1,8 +1,42 @@
 import mongoose from 'mongoose';
 import { env } from './env.js';
 import { logger } from './logger.js';
+import { spawn } from 'child_process';
+import fs from 'fs';
+
+const startLocalMongo = () => {
+  return new Promise((resolve) => {
+    const mongodPath = "C:\\Program Files\\MongoDB\\Server\\8.3\\bin\\mongod.exe";
+    const dbPath = "C:\\Users\\ASUS\\Desktop\\bruno\\Expense-management-system\\server\\.mongo-data";
+
+    if (fs.existsSync(mongodPath)) {
+      logger.info("Auto-starting local MongoDB service...");
+      try {
+        const mongoProcess = spawn(mongodPath, [
+          "--dbpath", dbPath,
+          "--port", "27017",
+          "--bind_ip", "127.0.0.1"
+        ], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        mongoProcess.unref();
+      } catch (err) {
+        logger.warn("Failed to spawn mongod process:", err.message);
+      }
+      setTimeout(resolve, 3000);
+    } else {
+      resolve();
+    }
+  });
+};
 
 export const connectDb = async () => {
+  const isLocal = env.mongoUri.includes('127.0.0.1') || env.mongoUri.includes('localhost');
+  if (isLocal) {
+    await startLocalMongo();
+  }
+
   try {
     mongoose.set('strictQuery', true);
     await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 7000 });

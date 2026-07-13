@@ -8,9 +8,9 @@ export const platformRoutes = Router();
 
 platformRoutes.use(authenticate, enforceTenant);
 platformRoutes.get('/analytics', requirePermission('analytics', 'view'), analytics);
-platformRoutes.get('/audit', requireRoles('company_admin', 'finance', 'super_admin'), requirePermission('audit_logs', 'view'), auditLogs);
+platformRoutes.get('/audit', requireRoles('company_admin', 'finance', 'cfo', 'super_admin'), requirePermission('audit_logs', 'view'), auditLogs);
 platformRoutes.get('/notifications', requirePermission('notifications', 'view'), notifications);
-platformRoutes.get('/reports/export/:format', requireRoles('company_admin', 'finance', 'super_admin'), requirePermission('expense_reports', 'export'), exportReport);
+platformRoutes.get('/reports/export/:format', requireRoles('company_admin', 'finance', 'super_admin', 'cfo'), requirePermission('expense_reports', 'export'), exportReport);
 
 for (const [base, config] of Object.entries({
   budgets: { controller: budgets, page: 'budgets' },

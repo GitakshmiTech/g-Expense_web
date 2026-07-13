@@ -10,6 +10,7 @@ export const moduleConfigs = {
       { name: 'code', label: 'Department Code', required: true },
       { name: 'budget.amount', label: 'Department Budget', type: 'number' },
       { name: 'budget.currency', label: 'Currency', defaultValue: 'INR' },
+      { name: 'managerId', label: 'Department Manager', type: 'employee_select' },
       { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'], defaultValue: 'active' }
     ]
   },
@@ -72,15 +73,17 @@ export const moduleConfigs = {
     ]
   },
   projects: {
+    pageKey: 'projects',
     title: 'Projects',
     description: 'Project budgets, project spend tracking, and ownership.',
     endpoint: 'projects',
-    columns: ['name', 'code', 'status'],
+    columns: ['name', 'code', 'managerId', 'status'],
     fields: [
       { name: 'name', label: 'Project Name', required: true },
       { name: 'code', label: 'Project Code', required: true },
       { name: 'budget.amount', label: 'Project Budget', type: 'number' },
       { name: 'budget.currency', label: 'Currency', defaultValue: 'INR' },
+      { name: 'managerId', label: 'Project Manager', type: 'employee_select' },
       { name: 'status', label: 'Status', type: 'select', options: ['active', 'on_hold', 'closed'], defaultValue: 'active' }
     ]
   },
@@ -89,12 +92,12 @@ export const moduleConfigs = {
     title: 'OCR Receipt Management',
     description: 'Receipt OCR extraction, duplicate detection, and fraud scoring.',
     endpoint: 'ocr_logs',
-    columns: ['provider', 'status', 'duplicateScore', 'fraudScore'],
+    columns: ['provider', 'status', 'duplicateScore', 'fraudScore', 'error', 'createdAt'],
     fields: [
       { name: 'provider', label: 'Provider', defaultValue: 'local-parser' },
-      { name: 'status', label: 'Status', type: 'select', options: ['queued', 'processing', 'completed', 'failed'], defaultValue: 'queued' },
-      { name: 'duplicateScore', label: 'Duplicate Score', type: 'number' },
-      { name: 'fraudScore', label: 'Fraud Score', type: 'number' },
+      { name: 'status', label: 'Status', type: 'select', options: ['queued', 'processing', 'completed', 'failed'], defaultValue: 'completed' },
+      { name: 'duplicateScore', label: 'Duplicate Score', type: 'number', defaultValue: 0 },
+      { name: 'fraudScore', label: 'Fraud Score', type: 'number', defaultValue: 0 },
       { name: 'error', label: 'Error' }
     ]
   },
@@ -119,7 +122,7 @@ export const moduleConfigs = {
     description: 'Immutable action history with actor, IP address, and before/after values.',
     endpoint: 'audit',
     readonly: true,
-    columns: ['action', 'entity', 'ip', 'createdAt']
+    columns: ['action', 'entity', 'actorId', 'ip', 'createdAt']
   },
   notifications: {
     pageKey: 'notifications',

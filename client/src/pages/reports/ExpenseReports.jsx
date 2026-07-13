@@ -68,7 +68,7 @@ export const ExpenseReports = () => {
       if (activeTab === 'draft' && !['draft', 'sent_back'].includes(status)) return false;
       if (activeTab === 'submitted' && status !== 'submitted') return false;
       if (activeTab === 'approved' && !['manager_approved', 'finance_verified', 'reimbursement_pending', 'reimbursed', 'closed'].includes(status)) return false;
-      if (activeTab === 'rejected' && status === 'rejected') return false;
+      if (activeTab === 'rejected' && status !== 'rejected') return false;
       return true;
     });
   }, [reports, activeTab]);
@@ -179,7 +179,7 @@ export const ExpenseReports = () => {
             <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
             <button 
               className="btn-primary flex items-center gap-1"
-              disabled={!title || selectedExpenseIds.length === 0 || createReport.isPending}
+              disabled={!title || createReport.isPending}
               onClick={() => createReport.mutate({ title, expenseIds: selectedExpenseIds })}
             >
               {createReport.isPending ? 'Creating...' : 'Create Draft Report'}
