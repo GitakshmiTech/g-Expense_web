@@ -1,12 +1,8 @@
 import { Router } from 'express';
-<<<<<<< HEAD
-import { createUser, deleteUser, listUserDirectory, listUsers, updateOwnPassword, updateUser } from '../controllers/user.controller.js';
-=======
-import { createUser, listUserDirectory, listUsers, updateUser, uploadUsersExcel } from '../controllers/user.controller.js';
+import { createUser, deleteUser, listUserDirectory, listUsers, updateOwnPassword, updateUser, uploadUsersExcel } from '../controllers/user.controller.js';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage() });
->>>>>>> main
 import { authenticate, requireRoles } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../middleware/permission.middleware.js';
 import { enforceTenant } from '../middleware/tenant.middleware.js';

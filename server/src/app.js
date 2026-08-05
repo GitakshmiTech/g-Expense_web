@@ -21,17 +21,14 @@ import { managerRoutes } from './routes/manager.routes.js';
 import { financeRoutes } from './routes/finance.routes.js';
 import { enterpriseAnalyticsRoutes } from './routes/enterpriseAnalytics.routes.js';
 import { categoryRoutes } from './routes/category.routes.js';
-<<<<<<< HEAD
 import { notificationRoutes } from './routes/notification.routes.js';
 import { supportRoutes } from './routes/support.routes.js';
 import { integrationRoutes } from './routes/integration.routes.js';
-=======
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
->>>>>>> main
 
 export const app = express();
 

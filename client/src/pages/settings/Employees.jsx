@@ -1,10 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-<<<<<<< HEAD
-import { Plus, Search, Eye, Pencil, UserCheck, UserX, Trash2 } from 'lucide-react';
-=======
-import { Plus, Search, Eye, Pencil, UserCheck, UserX, Upload } from 'lucide-react';
->>>>>>> main
+import { Plus, Search, Eye, Pencil, UserCheck, UserX, Trash2, Upload } from 'lucide-react';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable } from '../../components/tables/DataTable';
 import { Drawer } from '../../components/common/Drawer';
@@ -16,12 +12,9 @@ export const Employees = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [viewMode, setViewMode] = useState(false);
-<<<<<<< HEAD
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [employeeToDelete, setEmployeeToDelete] = useState(null);
-=======
   const fileInputRef = useRef(null);
->>>>>>> main
   const canCreate = usePermission('employees', 'create');
   const canEdit = usePermission('employees', 'edit');
   
@@ -70,7 +63,6 @@ export const Employees = () => {
     }
   });
 
-<<<<<<< HEAD
   const deleteMutation = useMutation({
     mutationFn: (id) => api.deleteUser(id),
     onSuccess: () => {
@@ -84,7 +76,6 @@ export const Employees = () => {
     }
   });
 
-=======
   const uploadMutation = useMutation({
     mutationFn: api.uploadEmployeesExcel,
     onSuccess: (data) => {
@@ -109,8 +100,6 @@ export const Employees = () => {
       uploadMutation.mutate(file);
     }
   };
-
->>>>>>> main
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -122,12 +111,8 @@ export const Employees = () => {
       managerId: formData.managerId || null
     };
     if (editingEmployee) {
-<<<<<<< HEAD
       const { password, ...payload } = normalizedForm;
-=======
-      const { password, ...payload } = formData;
       if (password) payload.password = password;
->>>>>>> main
       updateMutation.mutate({ id: editingEmployee._id, payload });
     } else {
       mutation.mutate(normalizedForm);
@@ -201,19 +186,6 @@ export const Employees = () => {
               />
             </div>
             {canCreate && (
-<<<<<<< HEAD
-              <button 
-                onClick={() => {
-                  setEditingEmployee(null);
-                  setViewMode(false);
-                  setFormData({ name: '', email: '', password: '', role: 'employee', department: '', employeeId: '', managerId: '' });
-                  setIsModalOpen(true);
-                }} 
-                className="btn btn-primary flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0"
-              >
-                <Plus className="h-4 w-4" /> Add Employee
-              </button>
-=======
               <div className="flex gap-2">
                 <input
                   type="file"
@@ -234,7 +206,7 @@ export const Employees = () => {
                   onClick={() => {
                     setEditingEmployee(null);
                     setViewMode(false);
-                    setFormData({ name: '', email: '', password: '', role: 'employee', department: '', employeeId: '' });
+                    setFormData({ name: '', email: '', password: '', role: 'employee', department: '', employeeId: '', managerId: '' });
                     setIsModalOpen(true);
                   }} 
                   className="btn btn-primary flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0"
@@ -242,7 +214,6 @@ export const Employees = () => {
                   <Plus className="h-4 w-4" /> Add Employee
                 </button>
               </div>
->>>>>>> main
             )}
           </>
         }

@@ -84,7 +84,6 @@ export const updateUser = asyncHandler(async (req, res) => {
   res.json(user);
 });
 
-<<<<<<< HEAD
 export const updateOwnPassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) throw new ApiError(400, 'Current password and new password are required');
@@ -113,7 +112,8 @@ export const deleteUser = asyncHandler(async (req, res) => {
   invalidatePermissionCache(req.companyId, req.params.id);
   await writeAudit({ req, action: 'user.delete', entity: 'User', entityId: req.params.id, before });
   res.json({ message: 'User deleted successfully' });
-=======
+});
+
 export const uploadUsersExcel = asyncHandler(async (req, res) => {
   if (!req.file) {
     res.status(400);
@@ -261,5 +261,4 @@ export const uploadUsersExcel = asyncHandler(async (req, res) => {
 
   await writeAudit({ req, action: 'user.upload', entity: 'User', after: { addedCount, updatedCount, errorCount, errorDetails } });
   res.json({ added: addedCount, updated: updatedCount, errors: errorCount, errorDetails });
->>>>>>> main
 });

@@ -2,6 +2,7 @@ import { http } from '../api/http';
 
 export const api = {
   analytics: async () => (await http.get('/analytics')).data,
+  budgets: async () => (await http.get('/budgets')).data,
   expenses: async (params) => (await http.get('/expenses', { params })).data,
   getExpense: async (id) => (await http.get(`/expenses/${id}`)).data,
   createExpense: async (payload) => (await http.post('/expenses', payload)).data,
@@ -63,17 +64,16 @@ export const api = {
   userDirectory: async () => (await http.get('/users/directory')).data,
   createUser: async (payload) => (await http.post('/users', payload)).data,
   updateUser: async (id, payload) => (await http.patch(`/users/${id}`, payload)).data,
-<<<<<<< HEAD
   deleteUser: async (id) => (await http.delete(`/users/${id}`)).data,
   changePassword: async (id, payload) => (await http.patch(`/users/${id}`, { ...payload, passwordChange: true })).data,
-=======
   uploadEmployeesExcel: async (file) => {
     const body = new FormData();
     body.append('file', file);
     return (await http.post('/users/upload', body)).data;
   },
->>>>>>> main
   companies: async () => (await http.get('/companies')).data,
+  createCompany: async (payload) => (await http.post('/companies', payload)).data,
+  updateCompany: async (id, payload) => (await http.patch(`/companies/${id}`, payload)).data,
   policies: async () => (await http.get('/policies')).data,
   createPolicy: async (payload) => (await http.post('/policies', payload)).data,
   travels: async () => (await http.get('/travels')).data,
