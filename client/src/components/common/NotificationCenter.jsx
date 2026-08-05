@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Bell, CheckCheck, CircleDollarSign, ClipboardCheck, MessageSquareText, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { http } from '../../api/http';
 import { useSocket } from '../../contexts/SocketContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -51,7 +50,6 @@ export const NotificationCenter = () => {
   const ref = useRef(null);
   const socket = useSocket();
   const toast = useToast();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   useOutsideClick(ref, () => setOpen(false));
@@ -110,7 +108,7 @@ export const NotificationCenter = () => {
     await markRead(notification);
     setOpen(false);
     const target = notification.actionUrl || (notification.data?.expenseId ? `/expenses/${notification.data.expenseId}` : null);
-    if (target) navigate(target);
+    if (target) window.location.href = target;
   };
 
   const markAllRead = async () => {
