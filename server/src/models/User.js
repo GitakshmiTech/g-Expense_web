@@ -63,7 +63,8 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ companyId: 1, email: 1 }, { unique: true, sparse: true });
 
 userSchema.pre('save', async function hashPassword(next) {
-  if (!this.isModified('password')) return next();
+  const isHash = String(this.password).startsWith('$2');
+  if (!this.isModified('password') && isHash) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });

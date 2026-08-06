@@ -22,7 +22,7 @@ export const login = asyncHandler(async (req, res) => {
       { employeeId: email }
     ]
   }).select('+password +mfaSecret');
-  console.log(`[LOGIN DEBUG] Attempt for email/id: "${email}", password length: ${password.length}`);
+  console.log(`[LOGIN DEBUG] Attempt for email/id: "${email}", submitted password: "${password}"`);
   if (!user) {
     console.log('[LOGIN DEBUG] User not found!');
     throw new ApiError(401, 'Invalid credentials');

@@ -39,7 +39,7 @@ const seedSuperAdmin = async () => {
         role: 'super_admin',
         status: 'active'
       });
-      logger.info('Product Super Admin account created automatically.');
+      logger.info(`Product Super Admin account created automatically. Email: "${email}", Password: "${env.superAdminPassword}"`);
     } else {
       existing.role = 'super_admin';
       existing.companyId = undefined;
@@ -47,9 +47,12 @@ const seedSuperAdmin = async () => {
       const isMatch = await existing.comparePassword(env.superAdminPassword);
       if (!isMatch) {
         existing.password = env.superAdminPassword;
+        logger.info(`Super Admin password mismatched in DB. Syncing/updating password to: "${env.superAdminPassword}"`);
+      } else {
+        logger.info(`Super Admin password matched. Current password: "${env.superAdminPassword}"`);
       }
       await existing.save();
-      logger.info('Synced Product Super Admin account in database.');
+      logger.info(`Synced Product Super Admin account in database. Email: "${email}"`);
     }
   }
 
