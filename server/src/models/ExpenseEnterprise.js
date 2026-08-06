@@ -77,7 +77,15 @@ const userSchema = new mongoose.Schema({
 });
 userSchema.plugin(enterpriseBasePlugin);
 userSchema.index({ companyId: 1, email: 1, isDeleted: 1 }, { unique: true });
-userSchema.index({ companyId: 1, employeeCode: 1, isDeleted: 1 }, { unique: true });
+userSchema.index(
+  { companyId: 1, employeeCode: 1, isDeleted: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      employeeCode: { $type: 'string' }
+    }
+  }
+);
 userSchema.index({ companyId: 1, managerId: 1, status: 1 });
 userSchema.pre('validate', async function hashPassword(next) {
   if (this.isModified('passwordHash') && !String(this.passwordHash).startsWith('$2')) this.passwordHash = await bcrypt.hash(this.passwordHash, 12);

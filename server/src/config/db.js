@@ -41,6 +41,20 @@ export const connectDb = async () => {
     mongoose.set('strictQuery', true);
     await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 7000 });
     logger.info(`MongoDB connected: ${mongoose.connection.name}`);
+
+    // Auto-migrate the users unique index if it doesn't have partialFilterExpression
+    try {
+      const collection = mongoose.connection.collection('users');
+      const indexes = await collection.indexes();
+      const oldIndex = indexes.find(idx => idx.name === 'companyId_1_employeeCode_1_isDeleted_1');
+      if (oldIndex && !oldIndex.partialFilterExpression) {
+        logger.info('Auto-migrating unique index: dropping old companyId_1_employeeCode_1_isDeleted_1 index...');
+        await collection.dropIndex('companyId_1_employeeCode_1_isDeleted_1');
+        logger.info('Index dropped successfully. Mongoose will rebuild it with partialFilterExpression.');
+      }
+    } catch (indexErr) {
+      logger.warn('Non-blocking: Failed to auto-migrate users unique index:', indexErr.message);
+    }
   } catch (error) {
     const localMongoHint = env.mongoUri.includes('127.0.0.1') || env.mongoUri.includes('localhost')
       ? 'Local MongoDB is not running. Start MongoDB on port 27017, or replace MONGODB_URI in server/.env with your MongoDB Atlas connection string.'
