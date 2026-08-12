@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Eye, Pencil, UserCheck, UserX, Trash2, Upload } from 'lucide-react';
+import { Plus, Search, Eye, Pencil, UserCheck, UserX, Trash2, Upload, Download, FileSpreadsheet } from 'lucide-react';
 import { PageHeader } from '../../components/common/PageHeader';
 import { DataTable } from '../../components/tables/DataTable';
 import { Drawer } from '../../components/common/Drawer';
@@ -100,6 +100,71 @@ export const Employees = () => {
       uploadMutation.mutate(file);
     }
   };
+
+  const handleExportExcel = async () => {
+    try {
+      if (api.exportEmployeesExcel) {
+        await api.exportEmployeesExcel();
+      } else {
+        const headers = ['Employee Code', 'Full Name', 'Email', 'Role', 'Department', 'Manager', 'Status'];
+        const rows = filteredEmployees.map((emp) => {
+          const managerId = emp.managerId?._id || emp.managerId;
+          const managerName = data.find((user) => user._id === managerId)?.name || '-';
+          return [
+            emp.employeeId || '',
+            emp.name || '',
+            emp.email || '',
+            emp.role || 'employee',
+            emp.department || '',
+            managerName,
+            emp.status || 'active'
+          ];
+        });
+        const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Employees_Export_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('Export error', err);
+      alert('Failed to export excel: ' + (err.message || 'Error occurred'));
+    }
+  };
+
+  const handleDownloadSample = async () => {
+    try {
+      if (api.downloadSampleEmployeesExcel) {
+        await api.downloadSampleEmployeesExcel();
+      } else {
+        const headers = ['Employee Code', 'Full Name', 'Email', 'Role', 'Department', 'Designation', 'Mobile', 'Password'];
+        const sampleRows = [
+          ['EMP101', 'Rahul Sharma', 'rahul.sharma@example.com', 'employee', 'Engineering', 'Software Engineer', '9876543210', 'Password@123'],
+          ['EMP102', 'Priya Patel', 'priya.patel@example.com', 'manager', 'HR', 'HR Manager', '9876543211', 'Password@123'],
+          ['EMP103', 'Amit Kumar', 'amit.kumar@example.com', 'finance', 'Finance', 'Finance Executive', '9876543212', 'Password@123']
+        ];
+        const csvContent = [headers.join(','), ...sampleRows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'sample_employees_import.csv');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('Sample download error', err);
+      alert('Failed to download sample excel: ' + (err.message || 'Error occurred'));
+    }
+  };
+
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -186,7 +251,7 @@ export const Employees = () => {
               />
             </div>
             {canCreate && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap items-center">
                 <input
                   type="file"
                   accept=".xlsx, .xls, .csv"
@@ -197,10 +262,27 @@ export const Employees = () => {
                 <button 
                   onClick={() => fileInputRef.current?.click()} 
                   disabled={uploadMutation.isPending}
-                  className="btn btn-secondary flex items-center gap-2 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 px-4 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0 transition disabled:opacity-50"
+                  className="btn btn-secondary flex items-center gap-2 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 px-3 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0 transition disabled:opacity-50 text-sm font-medium"
+                  title="Import employees from Excel"
                 >
-                  <Upload className="h-4 w-4" /> 
-                  {uploadMutation.isPending ? 'Uploading...' : 'Upload Excel'}
+                  <Upload className="h-4 w-4 text-blue-600 dark:text-blue-400" /> 
+                  {uploadMutation.isPending ? 'Importing...' : 'Import Excel'}
+                </button>
+                <button 
+                  onClick={handleExportExcel}
+                  className="btn btn-secondary flex items-center gap-2 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 px-3 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0 transition text-sm font-medium"
+                  title="Export employees list to Excel"
+                >
+                  <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> 
+                  Export Excel
+                </button>
+                <button 
+                  onClick={handleDownloadSample}
+                  className="btn btn-secondary flex items-center gap-2 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 px-3 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0 transition text-sm font-medium"
+                  title="Download sample Excel template"
+                >
+                  <FileSpreadsheet className="h-4 w-4 text-amber-600 dark:text-amber-400" /> 
+                  Sample Excel
                 </button>
                 <button 
                   onClick={() => {
@@ -209,7 +291,7 @@ export const Employees = () => {
                     setFormData({ name: '', email: '', password: '', role: 'employee', department: '', employeeId: '', managerId: '' });
                     setIsModalOpen(true);
                   }} 
-                  className="btn btn-primary flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0"
+                  className="btn btn-primary flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0 text-sm font-medium"
                 >
                   <Plus className="h-4 w-4" /> Add Employee
                 </button>

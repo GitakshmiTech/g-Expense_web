@@ -71,6 +71,28 @@ export const api = {
     body.append('file', file);
     return (await http.post('/users/upload', body)).data;
   },
+  downloadSampleEmployeesExcel: async () => {
+    const response = await http.get('/users/sample-excel', { responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'sample_employees_import.xlsx');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+  exportEmployeesExcel: async () => {
+    const response = await http.get('/users/export-excel', { responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Employees_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
   companies: async () => (await http.get('/companies')).data,
   createCompany: async (payload) => (await http.post('/companies', payload)).data,
   updateCompany: async (id, payload) => (await http.patch(`/companies/${id}`, payload)).data,

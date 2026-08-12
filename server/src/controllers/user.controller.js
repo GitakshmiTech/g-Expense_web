@@ -129,24 +129,16 @@ export const uploadUsersExcel = asyncHandler(async (req, res) => {
     throw new Error('Excel file is empty');
   }
 
-  const rows = [];
-  worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return; // Skip header row
-    
-    // We map by index since column names might slightly vary, 
-    // but it's safer to read headers first. Let's do header mapping.
-  });
-  
-  // Let's implement header-based mapping for robust extraction
   const headers = {};
   worksheet.getRow(1).eachCell((cell, colNumber) => {
-    const colName = cell.value.toString().trim().toLowerCase();
-    if (!headers[colName]) {
-      headers[colName] = colNumber;
+    const val = cell.value ? String(cell.value).trim().toLowerCase() : '';
+    if (val && !headers[val]) {
+      headers[val] = colNumber;
     }
   });
 
-  const users = [];
+  const allCompanyUsers = await User.find(tenantFilter(req)).select('_id name email employeeId role');
+
   let addedCount = 0;
   let updatedCount = 0;
   let errorCount = 0;
@@ -155,97 +147,93 @@ export const uploadUsersExcel = asyncHandler(async (req, res) => {
   for (let i = 2; i <= worksheet.rowCount; i++) {
     const row = worksheet.getRow(i);
     const getVal = (colName) => {
-      // First try an exact match
       let colIdx = Object.keys(headers).find(k => k === colName.toLowerCase());
-      // If no exact match, try includes
       if (colIdx === undefined) {
         colIdx = Object.keys(headers).find(k => k.includes(colName.toLowerCase()));
       }
       if (colIdx !== undefined) {
         const cell = row.getCell(headers[colIdx]);
-        return cell ? cell.text || cell.value : undefined;
+        if (!cell) return undefined;
+        if (cell.value && typeof cell.value === 'object' && cell.value.text) return String(cell.value.text).trim();
+        return cell.value !== null && cell.value !== undefined ? String(cell.value).trim() : undefined;
       }
       return undefined;
     };
 
-    const employeeCode = getVal('employee code') || getVal('emp id');
-    const name = getVal('name');
-    const email = getVal('official email') || getVal('company mail') || getVal('personal email') || getVal('email');
+    const email = getVal('official email') || getVal('company mail') || getVal('personal email') || getVal('email') || getVal('email address');
+    const name = getVal('name') || getVal('full name') || getVal('employee name');
     
+    // Ignore completely empty rows
+    if (!email && !name) {
+      continue;
+    }
+
     if (!email) {
       errorCount++;
       errorDetails.push(`Row ${i}: Missing email address.`);
       continue;
     }
 
-    // Get DOB strictly from the column next to Designation (User specified it's column G or next to Designation)
-    let dob = '';
-    const designationColIdx = Object.keys(headers).find(k => k === 'designation');
-    if (designationColIdx !== undefined) {
-      const dobCellIndex = headers[designationColIdx] + 1;
-      const cell = row.getCell(dobCellIndex);
-      dob = cell ? cell.text || cell.value : '';
+    const employeeCode = getVal('employee code') || getVal('emp id') || getVal('employee id') || getVal('code');
+    const department = getVal('department') || getVal('dept') || '';
+    const designation = getVal('designation') || getVal('title') || '';
+    const phone = getVal('mobile') || getVal('phone') || getVal('contact') || '';
+    const bankName = getVal('bank name') || getVal('bank') || '';
+    const accountNumber = getVal('ac number') || getVal('account number') || getVal('account no') || '';
+    const ifscCode = getVal('ifsic') || getVal('ifsc') || getVal('ifsc code') || '';
+    const roleRaw = getVal('role') || 'employee';
+
+    // Role normalization
+    let role = String(roleRaw).toLowerCase().trim().replace(/\s+/g, '_');
+    if (!['employee', 'manager', 'finance', 'company_admin', 'cfo', 'super_admin'].includes(role)) {
+      role = 'employee';
     }
 
-    let birthYear = '';
-    if (dob) {
-      if (dob instanceof Date) {
-        birthYear = dob.getFullYear().toString();
-      } else {
-        const yearMatch = dob.toString().match(/\b(19|20)\d{2}\b/);
-        if (yearMatch) birthYear = yearMatch[0];
+    // Reporting Manager lookup
+    let managerId = null;
+    const managerVal = getVal('manager') || getVal('reporting manager') || getVal('manager email');
+    if (managerVal) {
+      const mValLower = String(managerVal).toLowerCase().trim();
+      const foundManager = allCompanyUsers.find(u => 
+        u.email.toLowerCase() === mValLower || 
+        (u.employeeId && u.employeeId.toLowerCase() === mValLower) ||
+        u.name.toLowerCase() === mValLower
+      );
+      if (foundManager) {
+        managerId = foundManager._id;
       }
     }
 
     let autoPassword = 'Expense@123';
-    if (name && birthYear) {
-      const nameParts = name.toString().trim().split(/\s+/);
-      const firstPart = nameParts[0] || '';
-      const lastPart = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
-      const f3 = firstPart.substring(0, 3).toLowerCase();
-      const l3 = lastPart.substring(0, 3).toLowerCase();
-      autoPassword = `${f3}${l3}@${birthYear}`;
-    }
-
     const passwordRaw = getVal('password') || autoPassword;
-    // Do NOT hash the password here, because User.create triggers the pre('save') hook which hashes it!
-    const password = passwordRaw.toString();
-    
-    const department = getVal('department') || '';
-    const designation = getVal('designation') || '';
-    const phone = getVal('mobile') || getVal('phone') || '';
-    const bankName = getVal('bank name') || '';
-    const accountNumber = getVal('ac number') || getVal('account number') || '';
-    const ifscCode = getVal('ifsic') || getVal('ifsc') || '';
-
-    const finalEmployeeCode = employeeCode ? employeeCode.toString() : `EMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const password = String(passwordRaw).trim() || 'Expense@123';
+    const finalEmployeeCode = employeeCode ? String(employeeCode).trim() : `EMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const userData = {
       companyId: req.companyId,
-      name: name || email.split('@')[0],
-      email: email.toString().toLowerCase().trim(),
+      name: name ? String(name).trim() : email.split('@')[0],
+      email: String(email).toLowerCase().trim(),
       password,
       employeeId: finalEmployeeCode,
       employeeCode: finalEmployeeCode,
-      department: department.toString(),
-      designation: designation.toString(),
-      phone: phone.toString(),
+      department: String(department).trim(),
+      designation: String(designation).trim(),
+      phone: String(phone).trim(),
       bankDetails: {
-        bankName: bankName.toString(),
-        accountNumber: accountNumber.toString(),
-        ifscCode: ifscCode.toString(),
+        bankName: String(bankName).trim(),
+        accountNumber: String(accountNumber).trim(),
+        ifscCode: String(ifscCode).trim(),
       },
-      role: 'employee'
+      role,
+      ...(managerId ? { managerId } : {})
     };
 
-    const existingUser = await User.findOne({ 
-      companyId: req.companyId, 
-      $or: [{ email: userData.email }, ...(userData.employeeId ? [{ employeeId: userData.employeeId }] : [])] 
-    });
+    const existingUser = allCompanyUsers.find(u => 
+      u.email === userData.email || (userData.employeeId && u.employeeId === userData.employeeId)
+    );
 
     try {
       if (existingUser) {
-        // Don't overwrite password if updating existing user via bulk upload unless we want to force reset
         delete userData.password; 
         await User.updateOne({ _id: existingUser._id }, { $set: userData });
         updatedCount++;
@@ -261,4 +249,84 @@ export const uploadUsersExcel = asyncHandler(async (req, res) => {
 
   await writeAudit({ req, action: 'user.upload', entity: 'User', after: { addedCount, updatedCount, errorCount, errorDetails } });
   res.json({ added: addedCount, updated: updatedCount, errors: errorCount, errorDetails });
+});
+
+export const downloadSampleUsersExcel = asyncHandler(async (req, res) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Sample Employees');
+  
+  sheet.columns = [
+    { header: 'Employee Code', key: 'employeeId', width: 16 },
+    { header: 'Full Name', key: 'name', width: 24 },
+    { header: 'Email', key: 'email', width: 30 },
+    { header: 'Role', key: 'role', width: 15 },
+    { header: 'Department', key: 'department', width: 20 },
+    { header: 'Designation', key: 'designation', width: 20 },
+    { header: 'Mobile', key: 'phone', width: 16 },
+    { header: 'Password', key: 'password', width: 16 },
+  ];
+
+  sheet.addRows([
+    { employeeId: 'EMP101', name: 'Rahul Sharma', email: 'rahul.sharma@example.com', role: 'employee', department: 'Engineering', designation: 'Software Engineer', phone: '9876543210', password: 'Password@123' },
+    { employeeId: 'EMP102', name: 'Priya Patel', email: 'priya.patel@example.com', role: 'manager', department: 'HR', designation: 'HR Manager', phone: '9876543211', password: 'Password@123' },
+    { employeeId: 'EMP103', name: 'Amit Kumar', email: 'amit.kumar@example.com', role: 'finance', department: 'Finance', designation: 'Finance Executive', phone: '9876543212', password: 'Password@123' },
+  ]);
+
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: '2563EB' }
+  };
+
+  res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.header('Content-Disposition', 'attachment; filename="sample_employees_import.xlsx"');
+  const buffer = await workbook.xlsx.writeBuffer();
+  res.send(buffer);
+});
+
+export const exportUsersExcel = asyncHandler(async (req, res) => {
+  const users = await User.find(tenantFilter(req)).populate('managerId', 'name').sort({ createdAt: -1 });
+  
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Employees');
+  
+  sheet.columns = [
+    { header: 'Employee Code', key: 'employeeId', width: 16 },
+    { header: 'Full Name', key: 'name', width: 24 },
+    { header: 'Email', key: 'email', width: 30 },
+    { header: 'Role', key: 'role', width: 15 },
+    { header: 'Department', key: 'department', width: 20 },
+    { header: 'Designation', key: 'designation', width: 20 },
+    { header: 'Manager', key: 'manager', width: 22 },
+    { header: 'Status', key: 'status', width: 12 },
+  ];
+
+  users.forEach((user) => {
+    if (user.role === 'company_admin') return;
+    sheet.addRow({
+      employeeId: user.employeeId || '',
+      name: user.name || '',
+      email: user.email || '',
+      role: user.role || 'employee',
+      department: user.department || '',
+      designation: user.designation || '',
+      manager: user.managerId?.name || '-',
+      status: user.status || 'active'
+    });
+  });
+
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: '1E293B' }
+  };
+
+  res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.header('Content-Disposition', `attachment; filename="Employees_Export_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  const buffer = await workbook.xlsx.writeBuffer();
+  res.send(buffer);
 });
