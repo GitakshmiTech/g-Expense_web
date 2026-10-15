@@ -254,9 +254,9 @@ export const EnterpriseModulePage = ({ moduleKey }) => {
           onSubmit={handleSubmit} 
           isSaving={create.isPending || update.isPending} 
           employees={
-            moduleKey === 'departments'
-              ? (employeeData.employees || []).filter((emp) => emp.role === 'manager')
-              : (employeeData.employees || [])
+            (employeeData.employees || [])
+              .filter((emp) => emp.status !== 'suspended' && emp.status !== 'inactive')
+              .filter((emp) => (moduleKey === 'departments' ? emp.role === 'manager' : true))
           } 
         />
       )}

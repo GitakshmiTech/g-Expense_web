@@ -222,50 +222,73 @@ export const requestAssetAssignmentsForTravel = async ({ trip }) => {
   const selectedAssets = Array.isArray(trip?.assetRequests) ? trip.assetRequests : [];
   if (!selectedAssets.length) return null;
 
-  const response = await fetch(`${String(env.integration.assetApiBaseUrl).replace(/\/+$/, '')}/integrations/expense/travel-assignments`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-integration-token': env.integration.serviceToken,
-      'x-source-system': 'expense-management'
-    },
-    body: JSON.stringify({
-      travelId: trip.travelId,
-      travelRequestId: trip._id,
-      employeeName: trip.employeeId?.name,
-      employeeEmail: trip.employeeId?.email,
-      employeeId: String(trip.employeeId?._id || trip.employeeId || ''),
-      department: trip.department || trip.employeeId?.department,
-      startDate: trip.startDate,
-      endDate: trip.endDate,
-      expectedReturn: trip.endDate,
-      destination: trip.destination,
-      purpose: trip.purpose,
-      assets: selectedAssets
-    })
-  });
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const response = await fetch(`${String(env.integration.assetApiBaseUrl).replace(/\/+$/, '')}/integrations/expense/travel-assignments`, {
+      signal: controller.signal,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-integration-token': env.integration.serviceToken,
+        'x-source-system': 'expense-management'
+      },
+      body: JSON.stringify({
+        travelId: trip.travelId,
+        travelRequestId: trip._id,
+        employeeName: trip.employeeId?.name,
+        employeeEmail: trip.employeeId?.email,
+        employeeId: String(trip.employeeId?._id || trip.employeeId || ''),
+        department: trip.department || trip.employeeId?.department,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        expectedReturn: trip.endDate,
+        destination: trip.destination,
+        purpose: trip.purpose,
+        assets: selectedAssets
+      })
+    }).finally(() => clearTimeout(timeout));
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new ApiError(response.status, data.message || 'Asset assignment failed');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.warn('[AssetIntegration] Asset assignment failed:', data.message);
+      return null;
+    }
+    return data;
+  } catch (error) {
+    console.warn('[AssetIntegration] Asset assignment service unreachable:', error.message);
+    return null;
   }
-  return data;
 };
 
 export const listAvailableTravelAssets = async ({ search, category } = {}) => {
-  const url = new URL(`${String(env.integration.assetApiBaseUrl).replace(/\/+$/, '')}/integrations/expense/available-assets`);
-  if (search) url.searchParams.set('search', search);
-  if (category) url.searchParams.set('category', category);
+  try {
+    const baseUrl = String(env.integration.assetApiBaseUrl || '').replace(/\/+$/, '');
+    if (!baseUrl) return [];
 
-  const response = await fetch(url, {
-    headers: {
-      'x-integration-token': env.integration.serviceToken,
-      'x-source-system': 'expense-management'
+    const url = new URL(`${baseUrl}/integrations/expense/available-assets`);
+    if (search) url.searchParams.set('search', search);
+    if (category) url.searchParams.set('category', category);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'x-integration-token': env.integration.serviceToken,
+        'x-source-system': 'expense-management'
+      }
+    }).finally(() => clearTimeout(timeout));
+
+    if (!response.ok) {
+      console.warn(`[AssetIntegration] Available assets returned status ${response.status}`);
+      return [];
     }
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new ApiError(response.status, data.message || 'Failed to load travel assets');
+    const data = await response.json().catch(() => ({}));
+    return data.assets || [];
+  } catch (error) {
+    console.warn(`[AssetIntegration] External asset service is offline or unreachable (${error.message}). Continuing with empty asset list.`);
+    return [];
   }
-  return data.assets || [];
 };

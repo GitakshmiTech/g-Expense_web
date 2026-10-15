@@ -255,7 +255,7 @@ export const ExpenseForm = ({ onSubmit, isLoading, onCancel }) => {
 
   const filteredEmployees = users.filter((user) => {
     const haystack = `${user.name} ${user.email} ${user.department}`.toLowerCase();
-    return user.status === 'active' && (!departmentFilter || user.department === departmentFilter) && (!employeeSearch || haystack.includes(employeeSearch.toLowerCase()));
+    return user.status === 'active' && user.status !== 'suspended' && user.status !== 'inactive' && (!departmentFilter || user.department === departmentFilter) && (!employeeSearch || haystack.includes(employeeSearch.toLowerCase()));
   });
 
   const approvalPreview = useMemo(() => {

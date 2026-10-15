@@ -1,5 +1,5 @@
 import { Save, UserCog } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { PageHeader } from '../../components/common/PageHeader';
 import {
   useGetEmployeeAccessListQuery,
@@ -159,7 +159,12 @@ export const RolesPermissions = () => {
   const canEdit = usePermission('roles_permissions', 'edit');
   const canManage = usePermission('roles_permissions', 'manage');
   const canSave = canEdit || canManage;
-  const selectedEmployee = selectedEmployeeAccess?.employee || employeeData.employees?.find((employee) => employee._id === selectedEmployeeId);
+  const activeEmployees = useMemo(() => {
+    return (employeeData.employees || []).filter(
+      (employee) => employee.status !== 'suspended' && employee.status !== 'inactive'
+    );
+  }, [employeeData.employees]);
+  const selectedEmployee = selectedEmployeeAccess?.employee || activeEmployees.find((employee) => employee._id === selectedEmployeeId);
 
   const totalActions = pages.reduce((sum, page) => sum + (page.actions?.length || 0), 0);
   const currentGrants = employeeForm.permissions.filter((grant) => grant.allowed !== false).length;
@@ -239,7 +244,7 @@ export const RolesPermissions = () => {
               onChange={(event) => setSelectedEmployeeId(event.target.value)}
             >
               <option value="">Select employee</option>
-              {employeeData.employees?.map((employee) => (
+              {activeEmployees.map((employee) => (
                 <option key={employee._id} value={employee._id}>
                   {employee.name} - {employee.role}
                 </option>

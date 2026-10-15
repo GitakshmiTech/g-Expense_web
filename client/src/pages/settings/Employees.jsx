@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Eye, Pencil, UserCheck, UserX, Trash2, Upload, Download, FileSpreadsheet } from 'lucide-react';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -37,7 +37,28 @@ export const Employees = () => {
   });
   const departments = departmentData?.items || [];
   const filteredEmployees = data.filter(user => user.role !== 'company_admin');
-  const managerOptions = data.filter((user) => ['manager', 'company_admin'].includes(user.role) && user.status !== 'suspended');
+  const managerOptions = useMemo(() => {
+    const active = data.filter((user) => user.status !== 'suspended' && user.status !== 'inactive');
+    const selectedManager = active.find((u) => u._id === formData.managerId);
+    const seen = new Set();
+    const result = [];
+
+    if (selectedManager) {
+      const key = `${selectedManager.name?.trim().toLowerCase()}_${selectedManager.role?.toLowerCase()}`;
+      seen.add(key);
+      result.push(selectedManager);
+    }
+
+    active.forEach((user) => {
+      const key = `${user.name?.trim().toLowerCase()}_${user.role?.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(user);
+      }
+    });
+
+    return result;
+  }, [data, formData.managerId]);
 
   const mutation = useMutation({
     mutationFn: api.createUser,
@@ -520,7 +541,7 @@ export const Employees = () => {
             >
               <option value="">No reporting manager</option>
               {managerOptions
-                .filter((manager) => manager._id !== editingEmployee?._id)
+                .filter((manager) => manager._id !== editingEmployee?._id && manager.name !== editingEmployee?.name)
                 .map((manager) => (
                   <option key={manager._id} value={manager._id}>
                     {manager.name} ({manager.role})
